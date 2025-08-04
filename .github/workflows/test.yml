@@ -1,0 +1,30 @@
+name: Test
+
+on:
+  push:
+    branches: [root]
+  pull_request:
+    branches: [root]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        java-distribution: ['corretto', 'dragonwell', 'jetbrains', 'liberica', 'microsoft', 'oracle', 'sapmachine', 'zulu']
+        java-version: ['17', '21']
+        os: [macos-13, macos-latest, ubuntu-22.04, ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java ${{ matrix.java-distribution }} ${{ matrix.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          check-latest: true
+          distribution: ${{ matrix.java-distribution }} 
+          java-version: ${{ matrix.java-version }}
+      - name: Build package ${{ matrix.java-distribution }} ${{ matrix.java-version }} 
+        run: mvn clean install 
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

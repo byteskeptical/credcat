@@ -1,0 +1,16 @@
+* eol=lf text=auto
+
+*.java text
+*.lst text
+*.md text
+*.properties text
+*.txt text
+*.xml text
+
+*.class binary
+*.dat binary
+*.jar binary
+*.jpg binary
+*.png binary
+*.pom binary
+*.war binary

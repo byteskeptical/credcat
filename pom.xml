@@ -1,0 +1,253 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <artifactId>credpeek</artifactId>
+    <groupId>com.byteskeptical</groupId>
+    <inceptionYear>2025</inceptionYear>
+    <modelVersion>4.0.0</modelVersion>
+    <name>credpeek</name>
+    <packaging>jar</packaging>
+    <url>https://${source.host}/${source.account}/${project.name}/</url>
+    <version>1.0.0</version>
+
+    <build>
+        <plugins>
+            <plugin>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <configuration>
+                    <configLocation>checks.xml</configLocation>
+                    <failOnViolation>true</failOnViolation>
+                    <logViolationsToConsole>true</logViolationsToConsole>
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <artifactId>checkstyle</artifactId>
+                        <groupId>com.puppycrawl.tools</groupId>
+                        <version>10.26.1</version>
+                    </dependency>
+                    <dependency>
+                        <artifactId>guava</artifactId>
+                        <groupId>com.google.guava</groupId>
+                        <version>33.4.8-jre</version>
+                    </dependency>
+                </dependencies>
+                <groupId>org.apache.maven.plugins</groupId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <phase>validate</phase>
+                    </execution>
+                </executions>
+                <version>3.6.0</version>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                </configuration>
+                <groupId>org.apache.maven.plugins</groupId>
+                <version>3.14.0</version>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-dependencies</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <excludeTransitive>false</excludeTransitive>
+                            <outputDirectory>${project.build.directory}/dependency</outputDirectory>
+                            <stripVersion>false</stripVersion>
+                        </configuration>
+                    </execution>
+                </executions>
+                <groupId>org.apache.maven.plugins</groupId>
+                <version>3.8.1</version>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-shade-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <configuration>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>${project.groupId}.keeper.SecretsService</mainClass>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <phase>package</phase>
+                    </execution>
+                </executions>
+                <groupId>org.apache.maven.plugins</groupId>
+                <version>3.6.0</version>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <groupId>org.apache.maven.plugins</groupId>
+                <version>3.5.3</version>
+            </plugin>
+        </plugins>
+    </build>
+
+    <ciManagement>
+        <system>Github Actions</system>
+        <url>https://${source.host}/${source.account}/${project.artifactId}/actions</url>
+    </ciManagement>
+
+    <dependencies>
+        <dependency>
+            <artifactId>core</artifactId>
+            <groupId>com.keepersecurity.secrets-manager</groupId>
+            <version>[17.0.0,)</version>
+        </dependency>
+
+        <dependency>
+            <artifactId>bc-fips</artifactId>
+            <groupId>org.bouncycastle</groupId>
+            <version>2.1.0</version>
+        </dependency>
+
+        <dependency>
+            <artifactId>jackson-databind</artifactId>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <version>2.19.2</version>
+        </dependency>
+
+        <dependency>
+            <artifactId>junit-jupiter-api</artifactId>
+            <exclusions>
+                <exclusion>
+                  <artifactId>apiguardian-api</artifactId>
+                  <groupId>org.apiguardian</groupId>
+                </exclusion>
+                <exclusion>
+                    <artifactId>opentest4j</artifactId>
+                    <groupId>org.opentest4j</groupId>
+                </exclusion>
+            </exclusions>
+            <groupId>org.junit.jupiter</groupId>
+            <scope>test</scope>
+            <version>5.13.4</version>
+        </dependency>
+
+        <dependency>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <exclusions>
+                <exclusion>
+                    <artifactId>apiguardian-api</artifactId>
+                    <groupId>org.apiguardian</groupId>
+                </exclusion>
+                <exclusion>
+                    <artifactId>junit-platform-engine</artifactId>
+                    <groupId>org.junit.platform</groupId>
+                </exclusion>
+            </exclusions>
+            <groupId>org.junit.jupiter</groupId>
+            <scope>test</scope>
+            <version>5.13.4</version>
+        </dependency>
+
+        <dependency>
+            <artifactId>mockito-core</artifactId>
+            <exclusions>
+                <exclusion>
+                    <artifactId>objenesis</artifactId>
+                    <groupId>org.objenesis</groupId>
+                </exclusion>
+            </exclusions>
+            <groupId>org.mockito</groupId>
+            <scope>test</scope>
+            <version>5.18.0</version>
+        </dependency>
+
+        <dependency>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <groupId>org.mockito</groupId>
+            <scope>test</scope>
+            <version>5.18.0</version>
+        </dependency>
+    </dependencies>
+
+    <description>
+        Provides extended access to Keeper vaults through api based record retrival.
+    </description>
+
+    <developers>
+        <developer>
+            <email>git@${source.account}.com</email>
+            <id>${source.account}</id>
+            <name>${source.account}</name>
+            <organization>Information Technology</organization>
+            <organizationUrl>https://${source.account}.com/</organizationUrl>
+        </developer>
+    </developers>
+
+    <issueManagement>
+        <system>GitHub Issues</system>
+        <url>https://${source.host}/${source.account}/${project.name}/issues</url>
+    </issueManagement>
+
+    <organization>
+        <name>Information Technology</name>
+        <url>https://${source.account}.com/</url>
+    </organization>
+
+    <profiles>
+        <profile>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <distributionManagement>
+                <repository>
+                    <id>github</id>
+                    <name>GitHub Packages</name>
+                    <url>https://maven.pkg.${source.host}/${source.account}/${project.artifactId}</url>
+                </repository>
+            </distributionManagement>
+            <id>github</id>
+        </profile>
+        <profile>
+            <distributionManagement>
+                <repository>
+                    <id>ossrh</id>
+                    <name>Central Repository OSSRH</name>
+                    <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+                </repository>
+            </distributionManagement>
+            <id>ossrh</id>
+        </profile>
+    </profiles>
+
+    <properties>
+        <java.version>17</java.version>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <source.account>byteskeptical</source.account>
+        <source.host>github.com</source.host>
+    </properties>
+
+    <scm>
+        <connection>
+            scm:git:ssh://git@${source.host}/${source.account}/${project.name}.git
+        </connection>
+        <developerConnection>
+            scm:git:ssh://git@${source.host}/${source.account}/${project.name}.git
+        </developerConnection>
+        <url>https://${source.host}/${source.account}/${project.name}/tree/root</url>
+    </scm>
+</project>
