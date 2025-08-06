@@ -2,11 +2,11 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
-    <artifactId>credpeek</artifactId>
+    <artifactId>credcat</artifactId>
     <groupId>com.byteskeptical</groupId>
     <inceptionYear>2025</inceptionYear>
     <modelVersion>4.0.0</modelVersion>
-    <name>credpeek</name>
+    <name>credcat</name>
     <packaging>jar</packaging>
     <url>https://${source.host}/${source.account}/${project.name}/</url>
     <version>1.0.0</version>
@@ -191,7 +191,7 @@
             <email>git@${source.account}.com</email>
             <id>${source.account}</id>
             <name>${source.account}</name>
-            <organization>Information Technology</organization>
+            <organization>${organization.name}</organization>
             <organizationUrl>https://${source.account}.com/</organizationUrl>
         </developer>
     </developers>
@@ -202,7 +202,7 @@
     </issueManagement>
 
     <organization>
-        <name>Information Technology</name>
+        <name>${organization.name}</name>
         <url>https://${source.account}.com/</url>
     </organization>
 
@@ -233,9 +233,10 @@
     </profiles>
 
     <properties>
-        <java.version>17</java.version>
+        <java.version>21</java.version>
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
+        <organization.name>Gibberish Inc</organization.name>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <source.account>byteskeptical</source.account>
         <source.host>github.com</source.host>

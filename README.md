@@ -33,9 +33,9 @@
     <a href="https://github.com/byteskeptical/credcat"><strong>Explore the docs »</strong></a>
     <br />
     <br />
-    <a href="https://github.com/byteskeptical/credcat/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
+    <a href="https://github.com/byteskeptical/credcat/issues/new?labels=bug">Report Bug</a>
     &middot;
-    <a href="https://github.com/byteskeptical/credcat/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
+    <a href="https://github.com/byteskeptical/credcat/issues/new?labels=enhancement">Request Feature</a>
   </p>
 </div>
 
@@ -284,7 +284,7 @@ Don't forget to give the project a star! Thanks again!
 <!-- LICENSE -->
 ## License
 
-Distributed under the project_license. See `LICENSE.txt` for more information.
+Distributed under the project_license. See `LICENSE` for more information.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

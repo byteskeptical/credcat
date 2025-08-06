@@ -12,9 +12,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java-distribution: ['corretto', 'dragonwell', 'jetbrains', 'liberica', 'microsoft', 'oracle', 'sapmachine', 'zulu']
+        java-distribution: ['corretto', 'dragonwell', 'jetbrains', 'liberica', 'microsoft', 'oracle', 'sapmachine', 'semeru', 'zulu']
         java-version: ['17', '21']
         os: [macos-13, macos-latest, ubuntu-22.04, ubuntu-latest, windows-latest]
+        exclude:
+          - os: macos-13
+            java-distribution: ['dragonwell', 'jetbrains'] 
+          - os: macos-latest
+            java-distribution: 'dragonwell' 
 
     steps:
       - uses: actions/checkout@v4
@@ -25,6 +30,6 @@ jobs:
           distribution: ${{ matrix.java-distribution }} 
           java-version: ${{ matrix.java-version }}
       - name: Build package ${{ matrix.java-distribution }} ${{ matrix.java-version }} 
-        run: mvn clean install 
+        run: mvn clean package
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
