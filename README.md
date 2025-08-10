@@ -28,14 +28,14 @@
 <h3 align="center">credcat</h3>
 
   <p align="center">
-    Bound by sacred cyphers and powered by forgotten rites; access without a path, only a destination. Your vitals sigils safe, their essence known to none but their holder, sealed by the magic of pure ignorance.
+    Bound by sacred cyphers and powered by forgotten rites; access without a path, only a destination. Your vital sigils safe, their essence known to none but their holder, sealed by the magic of pure ignorance.
     <br />
     <a href="https://github.com/byteskeptical/credcat"><strong>Explore the docs »</strong></a>
     <br />
     <br />
-    <a href="https://github.com/byteskeptical/credcat/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
+    <a href="https://github.com/byteskeptical/credcat/issues/new?labels=bug">Report Bug</a>
     &middot;
-    <a href="https://github.com/byteskeptical/credcat/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
+    <a href="https://github.com/byteskeptical/credcat/issues/new?labels=enhancement">Request Feature</a>
   </p>
 </div>
 
@@ -72,7 +72,10 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-Extending access to Keeper secrets manager for api retrival in distributed or disconnected processes. Serves as a quality of life abstraction to diminish the scourge of hard-coded, insecurely handled credentials in our code bases.
+Extending access to Keeper secrets manager for api retrival in
+distributed or disconnected processes. Serves as a quality of life
+abstraction to diminish the scourge of hard-coded, insecurely
+handled credentials in our code bases.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -91,8 +94,8 @@ _Java is like a bad relationship. It's too object-oriented_
 <!-- GETTING STARTED -->
 ## Getting Started
 
-Compiling is not necessary as release binaries are available. If you're so
-inclined the sections below are for you.
+Compiling is not necessary as release binaries are available. If
+you're so inclined the sections below are for you.
 
 ### Prerequisites
 
@@ -200,7 +203,7 @@ location is returned in the response.
 
 2. Whether passing title or uid, records are returned nested under its respective uid.
    ```sh
-   java -cp "target/classes:target/dependency/*" com.byteskeptical.keeper.SecretsService $ADVANCED
+   java -cp "target/classes:target/dependency/*" com.byteskeptical.credcat.SecretsService $ADVANCED
    java -jar target/credcat.jar $UID_ONLY
    ```
    ```json
@@ -219,10 +222,10 @@ location is returned in the response.
        "notes" : "VALUE = x-ClickToCall-APIKey:be0d988f-063c-d654-ad1b-a54337f87233",
        "files" : [ {
          "name" : "ascii-art.txt",
-         "path" : "/tmp/keeper-2452814181455428916/ascii-art.txt"
+         "path" : "/mnt/share/keeper-2452814181455428916/ascii-art.txt"
        }, {
          "name" : "integration.ucaas.call.metadata.PNG",
-         "path" : "/tmp/keeper-2452814181455428916/integration.ucaas.call.metadata.PNG"
+         "path" : "/mnt/share/keeper-2452814181455428916/integration.ucaas.call.metadata.PNG"
        } ],
        "type" : "login",
        "title" : "Production ClickToCall API Key",
@@ -284,7 +287,7 @@ Don't forget to give the project a star! Thanks again!
 <!-- LICENSE -->
 ## License
 
-Distributed under the project_license. See `LICENSE.txt` for more information.
+Distributed under the project_license. See `LICENSE` for more information.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

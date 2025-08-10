@@ -1,4 +1,4 @@
-package com.byteskeptical.keeper.model;
+package com.byteskeptical.credcat.model;
 
 import java.util.List;
 

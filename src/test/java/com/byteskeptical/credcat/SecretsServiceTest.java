@@ -1,4 +1,4 @@
-package com.byteskeptical.keeper;
+package com.byteskeptical.credcat;
 
 import com.keepersecurity.secretsManager.core.KeeperRecord;
 import com.keepersecurity.secretsManager.core.KeeperRecordData;
@@ -51,7 +51,7 @@ class SecretsServiceTest {
 
     @Test
     void getVersion_returnsCorrectVersion() {
-        assertEquals("0.1337", service.getVersion(), "Version should match the defined string.");
+        assertEquals("1.0.0", service.getVersion(), "Version should match the defined string.");
     }
 
     @Test
