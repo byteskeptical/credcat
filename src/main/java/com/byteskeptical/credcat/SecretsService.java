@@ -69,7 +69,7 @@ public class SecretsService {
      * @return A string representing the service version.
      */
     public String getVersion() {
-        return "0.1337";
+        return "1.0.0";
     }
 
     /**
