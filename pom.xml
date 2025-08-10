@@ -81,7 +81,7 @@
                         <configuration>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>${project.groupId}.keeper.SecretsService</mainClass>
+                                    <mainClass>${project.groupId}.credcat.SecretsService</mainClass>
                                 </transformer>
                             </transformers>
                         </configuration>

@@ -17,9 +17,23 @@ jobs:
         os: [macos-13, macos-latest, ubuntu-22.04, ubuntu-latest, windows-latest]
         exclude:
           - os: macos-13
-            java-distribution: ['dragonwell', 'jetbrains'] 
+            java-distribution: 'dragonwell'
+            java-version: '17'
+          - os: macos-13
+            java-distribution: 'jetbrains'
+            java-version: '17'
+          - os: macos-13
+            java-distribution: 'dragonwell'
+            java-version: '21'
+          - os: macos-13
+            java-distribution: 'jetbrains'
+            java-version: '21'
           - os: macos-latest
-            java-distribution: 'dragonwell' 
+            java-distribution: 'dragonwell'
+            java-version: '17'
+          - os: macos-latest
+            java-distribution: 'dragonwell'
+            java-version: '21'
 
     steps:
       - uses: actions/checkout@v4

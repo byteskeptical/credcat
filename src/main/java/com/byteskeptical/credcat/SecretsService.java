@@ -1,8 +1,8 @@
-package com.byteskeptical.keeper;
+package com.byteskeptical.credcat;
 
-import com.byteskeptical.keeper.model.KeeperRequest;
-import com.byteskeptical.keeper.model.SecretResponse;
-import com.byteskeptical.keeper.util.JsonHandler;
+import com.byteskeptical.credcat.model.KeeperRequest;
+import com.byteskeptical.credcat.model.SecretResponse;
+import com.byteskeptical.credcat.util.JsonHandler;
 import com.keepersecurity.secretsManager.core.AccountNumber;
 import com.keepersecurity.secretsManager.core.AddressRef;
 import com.keepersecurity.secretsManager.core.Addresses;

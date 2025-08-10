@@ -1,4 +1,4 @@
-package com.byteskeptical.keeper;
+package com.byteskeptical.credcat;
 
 import com.keepersecurity.secretsManager.core.KeeperRecord;
 import com.keepersecurity.secretsManager.core.KeeperRecordData;
