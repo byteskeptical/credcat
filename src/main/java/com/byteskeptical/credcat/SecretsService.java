@@ -421,9 +421,9 @@ public class SecretsService {
      */
     public static void main(String[] args) {
         if (args.length == 0) {
-            System.out.println("Usage: java -jar credpeek.jar '<json_request>'");
+            System.out.println("Usage: java -jar credcat.jar '<json_request>'");
             System.out.println(
-                    "Example: java -jar credpeek.jar '{"
+                    "Example: java -jar credcat.jar '{"
                     + "\"config\":\"config.json\", "
                     + "\"titles\":[\"RECORD_TITLES\"], \"uids\":[\"RECORD_UID\"]}'"
             );
