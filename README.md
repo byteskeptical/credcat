@@ -143,7 +143,7 @@ packages like maven will be needed to utilize the provided pom file.
   Move-Item -Destination $maven_home -Path "$parentDir\*" -Force
   [Environment]::SetEnvironmentVariable('M2_HOME', $maven_home, [System.EnvironmentVariableTarget]::User)
   [Environment]::SetEnvironmentVariable('MAVEN_HOME', $maven_home, [System.EnvironmentVariableTarget]::User)
-  [Environment]::SetEnvironmentVariable('Path', "$env:PATH;$maven_home\bin", [System.EnvironmentVariableTarget]::User)
+  [Environment]::SetEnvironmentVariable('PATH', "$env:PATH;$maven_home\bin", [System.EnvironmentVariableTarget]::User)
   Remove-Item "$env:USERPROFILE\Downloads\jdk-21.msi"
   Remove-Item "$env:USERPROFILE\Downloads\maven.zip"
   Remove-Item "$env:USERPROFILE\Downloads\maven" -Recurse -Force
@@ -191,14 +191,14 @@ once. Exact matches only. Any files are downloaded locally and their save
 location is returned in the response.
 
    ```sh
-   Usage: java -jar credcat.jar '{ "config": "config.base64", "titles": ["RECORD_TITLE"], "uids": ["RECORD_UID"] }'
+   Usage: java -jar credcat.jar '{ "config": ".keeper/config.base64", "titles": ["RECORD_TITLE"], "uids": ["RECORD_UID"] }'
    ```
 
 1. Payload can be any of the following.
    ```sh
    ADVANCED='{ "clientKey": "7dae669a419ee250d0fd0e12d527f5f1", "config": "config.base64", "saveLocation": "/mnt/share/keeper", "titles": ["development ldap"], "uids": ["chnmFhEC38YCHhNY1pA8Vg"] }'
-   TITLE_ONLY='{ "config": "config.base64", "titles": ["Production ClickToCall API Key", "development ldap"] }'
-   UID_ONLY='{ "config": "config.base64", "uids": ["7bN_ceW-p3_alVUNmI09Tw", "chnmGhEC39YCHhNy1pA8vg"] }'
+   TITLE_ONLY='{ "config": ".keeper/config.base64", "titles": ["Production ClickToCall API Key", "development ldap"] }'
+   UID_ONLY='{ "config": ".keeper/config.base64", "uids": ["7bN_ceW-p3_alVUNmI09Tw", "chnmGhEC39YCHhNy1pA8vg"] }'
    ```
 
 2. Whether passing title or uid, records are returned nested under its respective uid.
@@ -296,7 +296,7 @@ Distributed under the project_license. See `LICENSE` for more information.
 <!-- CONTACT -->
 ## Contact
 
-byteskeptical - [@byteskeptical](https://github.com/byteskeptical) - bugs@byteskeptical.com
+byteskeptical - [@byteskeptical](https://github.com/byteskeptical) - bug@byteskeptical.com
 
 Project Link: [https://github.com/byteskeptical/credcat](https://github.com/byteskeptical/credcat)
 
@@ -307,7 +307,7 @@ Project Link: [https://github.com/byteskeptical/credcat](https://github.com/byte
 <!-- ACKNOWLEDGMENTS -->
 ## Acknowledgments
 
-* [@byteskeptical](bugs@byteskeptical.com)
+* [@byteskeptical](bug@byteskeptical.com)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
