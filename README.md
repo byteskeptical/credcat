@@ -165,7 +165,7 @@ packages like maven will be needed to utilize the provided pom file.
    mvn install
 
    # prepare package for official release
-   mvn release
+   mvn package
    ```
 3. Run tests, (optional). Making changes, (required)
    ```sh
