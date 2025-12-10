@@ -183,15 +183,16 @@ packages like maven will be needed to utilize the provided pom file.
 <!-- USAGE EXAMPLES -->
 ## Usage
 
-You will need to generate a base64 device config for your KSM application folder
-or use one for an existing authorized device. The local path location to this
-file can be passed as a means to switch between application vaults. You can pass
+You will need to generate a device config for your KSM application in either
+base64 or json format. You can also use the one time password feature to generate
+the config dynamically using the clientKey parameter instead. Using the config
+parameter provides the means to switch between application vaults. You can pass
 one or more of either titles and/or record uid's to retrive multiple records at
 once. Exact matches only. Any files are downloaded locally and their save
 location is returned in the response.
 
    ```sh
-   Usage: java -jar credcat.jar '{ "config": ".keeper/config.base64", "titles": ["RECORD_TITLE"], "uids": ["RECORD_UID"] }'
+   Usage: java -jar credcat.jar [ -server | '{ "config": ".keeper/config.base64", "titles": ["RECORD_TITLE"], "uids": ["RECORD_UID"] }' ]
    ```
 
 1. Payload can be any of the following.
@@ -238,6 +239,17 @@ location is returned in the response.
    }
    ```
 
+3. Running in server mode accepts the same request payload, passed by the http client of your choice.
+   You can set your preferred host and port in the credcat properties file.
+   ```sh
+   java -cp "target/classes:target/dependency/*" -server
+   java -jar target/credcat.jar -server
+   ```
+   ```sh
+   curl -d $UID_ONLY -H 'Content-Type: application/json' -v -XPOST http://127.0.0.1:8888/api/getSecrets
+   curl -H 'Content-Type: application/json' -v http://127.0.0.1:8888/api/getVersion
+   ```
+
 
 
 [![Product Name Screen Shot][product-screenshot]](https://github.com/byteskeptical/credcat)
@@ -249,9 +261,10 @@ location is returned in the response.
 <!-- ROADMAP -->
 ## Roadmap
 
+- [x] Handle all field types including files & notes
 - [x] Handle title & uid searches
 - [x] Retrieve more than one record in a single request
-- [x] Handle all field types including files & notes
+- [x] Support stand-alone and server modes
 
 See the [open issues](https://github.com/byteskeptical/credcat/issues) for a full list of proposed features (and known issues).
 

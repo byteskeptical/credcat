@@ -73,7 +73,7 @@ class SecretsServiceTest {
     @DisplayName("Version Check: Return the semantic version")
     @Test
     void getVersion_returnsCorrectVersion() {
-        assertEquals("1.0.0", service.getVersion());
+        assertEquals("1.0.0", service.getVersion(), "Version should match the defined string.");
     }
 
     @DisplayName("Null or Empty Check: Input validation")

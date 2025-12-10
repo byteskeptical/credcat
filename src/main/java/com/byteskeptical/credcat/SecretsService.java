@@ -5,7 +5,6 @@ import com.byteskeptical.credcat.model.SecretResponse;
 import com.byteskeptical.credcat.util.JsonHandler;
 import com.keepersecurity.secretsManager.core.AccountNumber;
 import com.keepersecurity.secretsManager.core.AddressRef;
-import com.keepersecurity.secretsManager.core.Addresses;
 import com.keepersecurity.secretsManager.core.BankAccounts;
 import com.keepersecurity.secretsManager.core.BirthDate;
 import com.keepersecurity.secretsManager.core.CardRef;
@@ -38,6 +37,7 @@ import com.keepersecurity.secretsManager.core.SecretsManagerOptions;
 import com.keepersecurity.secretsManager.core.SecureNote;
 import com.keepersecurity.secretsManager.core.SecurityQuestions;
 import com.keepersecurity.secretsManager.core.Text;
+import com.keepersecurity.secretsManager.core.TotpCode;
 import com.keepersecurity.secretsManager.core.Url;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
@@ -80,7 +80,9 @@ public class SecretsService {
     private static final String CONFIG = "credcat.properties";
     private static final String DOMAIN = "keepersecurity.com";
     private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool();
-    private static final Logger LOGGER = Logger.getLogger(SecretsService.class.getName());
+    private static final Logger LOGGER = Logger.getLogger(
+            SecretsService.class.getName()
+    );
 
     static {
         Security.addProvider(new BouncyCastleFipsProvider());
@@ -157,8 +159,8 @@ public class SecretsService {
                     );
                 } catch (IOException e) {
                     LOGGER.log(Level.SEVERE,
-                               "Found config " + CONFIG
-                               + " but failed to read it. Check your permissions.", e
+                               "Found the config " + CONFIG
+                               + " but failed to read it. Check the permissions.",                                    e
                     );
                     throw e;
                 }
@@ -170,7 +172,7 @@ public class SecretsService {
 
             this.clientKey = props.getProperty("keeper.client_key", null);
             this.filesLocation = props.getProperty("keeper.files", keeperFiles);
-            this.host = props.getProperty("server.host", "0.0.0.0");
+            this.host = props.getProperty("server.host", "127.0.0.1");
             this.port = Integer.parseInt(props.getProperty("server.port", "8080"));
             String keepConf = props.getProperty("keeper.config");
             if (keepConf != null && !keepConf.isBlank()) {
@@ -236,6 +238,7 @@ public class SecretsService {
      * @throws Exception if the request fails to process.
      */
     public String getSecrets(String jsonRequest) throws Exception {
+        LOGGER.log(Level.FINE, jsonRequest);
         KeeperRequest request = JsonHandler.fromJson(jsonRequest, KeeperRequest.class);
 
         String keeperConfig = request.getConfig();
@@ -266,9 +269,9 @@ public class SecretsService {
         try {
             storage = new LocalConfigStorage(keeperConfig);
         } catch (Exception e) {
-            String errorMessage = "Error loading KSM Config. Make sure "
+            String errorMessage = "Loading of KSM vault config failed. Be sure "
                     + keeperConfig
-                    + " contains a valid base64 encoded JSON config.";
+                    + " contains a valid base64 encoded string or JSON object.";
             LOGGER.log(Level.SEVERE, errorMessage, e);
             throw new RuntimeException(errorMessage, e);
         }
@@ -296,7 +299,7 @@ public class SecretsService {
      * Downloads files attached to a KeeperRecord, provides its metadata.
      *
      * @param files A list of KeeperFile entries usually from a KeeperRecord.
-     * @param saveLocation Local path to files save directory.
+     * @param saveLocation Local path to save directory for record's files.
      * @return A list of name, path file object details for downloaded files.
      * @throws IOException if a file operation fails.
      */
@@ -335,7 +338,7 @@ public class SecretsService {
      * Process record(s) field(s) values, organize in a structured format.
      *
      * @param record A KeeperRecord entry.
-     * @param saveLocation Local path to files save directory.
+     * @param saveLocation Local path to save directory for record's files.
      * @return A hashmap of credential fields and their values.
      * @throws IOException if a file operation fails during processing.
      */
@@ -358,7 +361,9 @@ public class SecretsService {
             List<KeeperRecordField> fields = recordData.getFields();
             List<KeeperRecordField> customFields = recordData.getCustom();
             Stream<KeeperRecordField> allFields = Stream.concat(fields.stream(),
-                                                                customFields.stream());
+                                                                customFields.stream()
+            );
+
             allFields.forEach(field -> {
                 String label = field.getLabel();
                 if (label == null) {
@@ -407,15 +412,16 @@ public class SecretsService {
             return ((AddressRef) field).getValue();
         } else if (field instanceof BankAccounts) {
             return ((BankAccounts) field).getValue().stream()
+                .filter(Objects::nonNull)
                 .map(ba -> {
                     if (ba == null) {
                         return null;
                     }
                     return String.format("Type: %s, Routing: %s, Account: %s, Other: %s",
                         ba.getAccountType(), ba.getRoutingNumber(),
-                        ba.getAccountNumber(), ba.getOtherType());
+                        ba.getAccountNumber(), ba.getOtherType()
+                    );
                 })
-                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
         } else if (field instanceof CardRef) {
             return ((CardRef) field).getValue();
@@ -435,24 +441,25 @@ public class SecretsService {
             return ((HiddenField) field).getValue();
         } else if (field instanceof Hosts) {
             return ((Hosts) field).getValue().stream()
+                .filter(Objects::nonNull)
                 .map(h -> {
                     if (h == null) {
                         return null;
                     }
                     return String.format("%s:%s", h.getHostName(), h.getPort());
                 })
-                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
         } else if (field instanceof KeyPairs) {
             return ((KeyPairs) field).getValue().stream()
+                .filter(Objects::nonNull)
                 .map(kp -> {
                     if (kp == null) {
                         return null;
                     }
                     return String.format("Public Key: %s, Private Key: %s",
-                        kp.getPublicKey(), kp.getPrivateKey());
+                        kp.getPrivateKey(), kp.getPublicKey()
+                    );
                 })
-                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
         } else if (field instanceof LicenseNumber) {
             return ((LicenseNumber) field).getValue();
@@ -460,6 +467,7 @@ public class SecretsService {
             return ((Multiline) field).getValue();
         } else if (field instanceof Names) {
             return ((Names) field).getValue().stream()
+                .filter(Objects::nonNull)
                 .map(n -> {
                     if (n == null) {
                         return null;
@@ -470,14 +478,24 @@ public class SecretsService {
                         n.getLast() != null ? n.getLast() : ""
                     ).trim();
                 })
-                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
         } else if (field instanceof OneTimeCode) {
-            return ((OneTimeCode) field).getValue();
+            return ((OneTimeCode) field).getValue().stream()
+                .filter(Objects::nonNull)
+                .map(url -> {
+                    TotpCode totp = TotpCode.uriToTotpCode(url);
+                    return List.of(
+                        totp.getCode(),
+                        String.valueOf(totp.getTimeLeft())
+                    );
+                })
+                .flatMap(List::stream)
+                .collect(Collectors.toList());
         } else if (field instanceof OneTimePassword) {
             return ((OneTimePassword) field).getValue();
         } else if (field instanceof Passkeys) {
             return ((Passkeys) field).getValue().stream()
+                .filter(Objects::nonNull)
                 .map(pk -> {
                     if (pk == null) {
                         return null;
@@ -492,30 +510,34 @@ public class SecretsService {
                         pk.getPrivateKey()
                     );
                 })
-                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
         } else if (field instanceof Password) {
             return ((Password) field).getValue();
         } else if (field instanceof PaymentCards) {
             return ((PaymentCards) field).getValue().stream()
+                .filter(Objects::nonNull)
                 .map(pc -> {
                     if (pc == null) {
                         return null;
                     }
                     return String.format("%s, %s, %s",
-                        pc.getCardNumber(), pc.getCardExpirationDate(), pc.getCardSecurityCode());
+                        pc.getCardNumber(),
+                        pc.getCardExpirationDate(),
+                        pc.getCardSecurityCode()
+                    );
                 })
-                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
         } else if (field instanceof Phones) {
             return ((Phones) field).getValue().stream()
+                .filter(Objects::nonNull)
                 .map(p -> {
                     if (p == null) {
                         return null;
                     }
-                    return String.format("%s, %s", p.getType(), p.getNumber());
+                    return String.format("%s, %s",
+                        p.getType(), p.getNumber()
+                    );
                 })
-                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
         } else if (field instanceof PinCode) {
             return ((PinCode) field).getValue();
@@ -523,14 +545,15 @@ public class SecretsService {
             return ((SecureNote) field).getValue();
         } else if (field instanceof SecurityQuestions) {
             return ((SecurityQuestions) field).getValue().stream()
+                .filter(Objects::nonNull)
                 .map(sq -> {
                     if (sq == null) {
                         return null;
                     }
                     return String.format("%s, %s",
-                        sq.getQuestion(), sq.getAnswer());
+                        sq.getQuestion(), sq.getAnswer()
+                    );
                 })
-                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
         } else if (field instanceof Text) {
             return ((Text) field).getValue();
@@ -550,7 +573,7 @@ public class SecretsService {
      * Don't shoot the messenger.
      *
      * @param exchange Encapsulation of methods for request received and response.
-     * @param statusCode HTTP status of choice.
+     * @param statusCode HTTP status of choice sent as response.
      * @param response What say you back?
      */
     private static void sendResponse(
@@ -634,7 +657,7 @@ public class SecretsService {
         long startTime = System.currentTimeMillis();
 
         if (args.length == 0) {
-            System.out.println("Usage: java -jar credcat.jar [-server | '<json_request>']");
+            System.out.println("Usage: java -jar credcat.jar [-server | '<json_request>']\n");
             System.out.println(
                     "Example: java -jar credcat.jar '{"
                     + "\"config\":\"config.json\", "
@@ -650,7 +673,7 @@ public class SecretsService {
 
             if (args[0].equals("-server")) {
                 HttpServer server = HttpServer.create(
-                    new InetSocketAddress(config.host, config.port), 0
+                        new InetSocketAddress(config.host, config.port), 0
                 );
 
                 server.createContext(
@@ -658,7 +681,7 @@ public class SecretsService {
                         new SecretsHandler(service, config)
                 );
                 server.createContext(
-                        "/version",
+                        "/api/version",
                         new VersionHandler(service)
                 );
 
