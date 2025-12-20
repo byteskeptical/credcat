@@ -414,14 +414,16 @@ public class SecretsService {
             return ((BankAccounts) field).getValue().stream()
                 .filter(Objects::nonNull)
                 .map(ba -> {
-                    if (ba == null) {
-                        return null;
-                    }
                     return String.format("Type: %s, Routing: %s, Account: %s, Other: %s",
                         ba.getAccountType(), ba.getRoutingNumber(),
                         ba.getAccountNumber(), ba.getOtherType()
                     );
                 })
+                .collect(Collectors.toList());
+        } else if (field instanceof BirthDate) {
+            return ((BirthDate) field).getValue().stream()
+                .filter(Objects::nonNull)
+                .map(timestamp -> new java.util.Date(timestamp).toString())
                 .collect(Collectors.toList());
         } else if (field instanceof CardRef) {
             return ((CardRef) field).getValue();
@@ -443,9 +445,6 @@ public class SecretsService {
             return ((Hosts) field).getValue().stream()
                 .filter(Objects::nonNull)
                 .map(h -> {
-                    if (h == null) {
-                        return null;
-                    }
                     return String.format("%s:%s", h.getHostName(), h.getPort());
                 })
                 .collect(Collectors.toList());
@@ -453,9 +452,6 @@ public class SecretsService {
             return ((KeyPairs) field).getValue().stream()
                 .filter(Objects::nonNull)
                 .map(kp -> {
-                    if (kp == null) {
-                        return null;
-                    }
                     return String.format("Public Key: %s, Private Key: %s",
                         kp.getPrivateKey(), kp.getPublicKey()
                     );
@@ -469,9 +465,6 @@ public class SecretsService {
             return ((Names) field).getValue().stream()
                 .filter(Objects::nonNull)
                 .map(n -> {
-                    if (n == null) {
-                        return null;
-                    }
                     return String.format("%s %s %s",
                         n.getFirst() != null ? n.getFirst() : "",
                         n.getMiddle() != null ? n.getMiddle() : "",
@@ -497,9 +490,6 @@ public class SecretsService {
             return ((Passkeys) field).getValue().stream()
                 .filter(Objects::nonNull)
                 .map(pk -> {
-                    if (pk == null) {
-                        return null;
-                    }
                     return String.format("%s, %s, %s, %s, %s, %s, %s",
                         pk.getCredentialId(),
                         pk.getSignCount(),
@@ -517,9 +507,6 @@ public class SecretsService {
             return ((PaymentCards) field).getValue().stream()
                 .filter(Objects::nonNull)
                 .map(pc -> {
-                    if (pc == null) {
-                        return null;
-                    }
                     return String.format("%s, %s, %s",
                         pc.getCardNumber(),
                         pc.getCardExpirationDate(),
@@ -531,9 +518,6 @@ public class SecretsService {
             return ((Phones) field).getValue().stream()
                 .filter(Objects::nonNull)
                 .map(p -> {
-                    if (p == null) {
-                        return null;
-                    }
                     return String.format("%s, %s",
                         p.getType(), p.getNumber()
                     );
@@ -547,9 +531,6 @@ public class SecretsService {
             return ((SecurityQuestions) field).getValue().stream()
                 .filter(Objects::nonNull)
                 .map(sq -> {
-                    if (sq == null) {
-                        return null;
-                    }
                     return String.format("%s, %s",
                         sq.getQuestion(), sq.getAnswer()
                     );
