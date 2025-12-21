@@ -143,7 +143,7 @@ packages like maven will be needed to utilize the provided pom file.
   Move-Item -Destination $maven_home -Path "$parentDir\*" -Force
   [Environment]::SetEnvironmentVariable('M2_HOME', $maven_home, [System.EnvironmentVariableTarget]::User)
   [Environment]::SetEnvironmentVariable('MAVEN_HOME', $maven_home, [System.EnvironmentVariableTarget]::User)
-  [Environment]::SetEnvironmentVariable('Path', "$env:PATH;$maven_home\bin", [System.EnvironmentVariableTarget]::User)
+  [Environment]::SetEnvironmentVariable('PATH', "$env:PATH;$maven_home\bin", [System.EnvironmentVariableTarget]::User)
   Remove-Item "$env:USERPROFILE\Downloads\jdk-21.msi"
   Remove-Item "$env:USERPROFILE\Downloads\maven.zip"
   Remove-Item "$env:USERPROFILE\Downloads\maven" -Recurse -Force
@@ -165,7 +165,7 @@ packages like maven will be needed to utilize the provided pom file.
    mvn install
 
    # prepare package for official release
-   mvn release
+   mvn package
    ```
 3. Run tests, (optional). Making changes, (required)
    ```sh
@@ -183,22 +183,23 @@ packages like maven will be needed to utilize the provided pom file.
 <!-- USAGE EXAMPLES -->
 ## Usage
 
-You will need to generate a base64 device config for your KSM application folder
-or use one for an existing authorized device. The local path location to this
-file can be passed as a means to switch between application vaults. You can pass
+You will need to generate a device config for your KSM application in either
+base64 or json format. You can also use the one time password feature to generate
+the config dynamically using the clientKey parameter instead. Using the config
+parameter provides the means to switch between application vaults. You can pass
 one or more of either titles and/or record uid's to retrive multiple records at
 once. Exact matches only. Any files are downloaded locally and their save
 location is returned in the response.
 
    ```sh
-   Usage: java -jar credcat.jar '{ "config": "config.base64", "titles": ["RECORD_TITLE"], "uids": ["RECORD_UID"] }'
+   Usage: java -jar credcat.jar [ -server | '{ "config": ".keeper/config.base64", "titles": ["RECORD_TITLE"], "uids": ["RECORD_UID"] }' ]
    ```
 
 1. Payload can be any of the following.
    ```sh
    ADVANCED='{ "clientKey": "7dae669a419ee250d0fd0e12d527f5f1", "config": "config.base64", "saveLocation": "/mnt/share/keeper", "titles": ["development ldap"], "uids": ["chnmFhEC38YCHhNY1pA8Vg"] }'
-   TITLE_ONLY='{ "config": "config.base64", "titles": ["Production ClickToCall API Key", "development ldap"] }'
-   UID_ONLY='{ "config": "config.base64", "uids": ["7bN_ceW-p3_alVUNmI09Tw", "chnmGhEC39YCHhNy1pA8vg"] }'
+   TITLE_ONLY='{ "config": ".keeper/config.base64", "titles": ["Production ClickToCall API Key", "development ldap"] }'
+   UID_ONLY='{ "config": ".keeper/config.base64", "uids": ["7bN_ceW-p3_alVUNmI09Tw", "chnmGhEC39YCHhNy1pA8vg"] }'
    ```
 
 2. Whether passing title or uid, records are returned nested under its respective uid.
@@ -238,6 +239,17 @@ location is returned in the response.
    }
    ```
 
+3. Running in server mode accepts the same request payload, passed by the http client of your choice.
+   You can set your preferred host and port in the credcat properties file.
+   ```sh
+   java -cp "target/classes:target/dependency/*" -server
+   java -jar target/credcat.jar -server
+   ```
+   ```sh
+   curl -d $UID_ONLY -H 'Content-Type: application/json' -v -XPOST http://127.0.0.1:8888/api/getSecrets
+   curl -H 'Content-Type: application/json' -v http://127.0.0.1:8888/api/getVersion
+   ```
+
 
 
 [![Product Name Screen Shot][product-screenshot]](https://github.com/byteskeptical/credcat)
@@ -249,9 +261,10 @@ location is returned in the response.
 <!-- ROADMAP -->
 ## Roadmap
 
+- [x] Handle all field types including files & notes
 - [x] Handle title & uid searches
 - [x] Retrieve more than one record in a single request
-- [x] Handle all field types including files & notes
+- [x] Support stand-alone and server modes
 
 See the [open issues](https://github.com/byteskeptical/credcat/issues) for a full list of proposed features (and known issues).
 
@@ -296,7 +309,7 @@ Distributed under the project_license. See `LICENSE` for more information.
 <!-- CONTACT -->
 ## Contact
 
-byteskeptical - [@byteskeptical](https://github.com/byteskeptical) - bugs@byteskeptical.com
+byteskeptical - [@byteskeptical](https://github.com/byteskeptical) - bug@byteskeptical.com
 
 Project Link: [https://github.com/byteskeptical/credcat](https://github.com/byteskeptical/credcat)
 
@@ -307,7 +320,7 @@ Project Link: [https://github.com/byteskeptical/credcat](https://github.com/byte
 <!-- ACKNOWLEDGMENTS -->
 ## Acknowledgments
 
-* [@byteskeptical](bugs@byteskeptical.com)
+* [@byteskeptical](bug@byteskeptical.com)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

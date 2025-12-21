@@ -75,7 +75,55 @@
             </plugin>
 
             <plugin>
+                <artifactId>maven-gpg-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <configuration>
+                            <gpgArguments>
+                                <arg>--batch</arg>
+                                <arg>--pinentry-mode</arg>
+                                <arg>loopback</arg>
+                            </gpgArguments>
+                            <keyname>${gpg.keyname}</keyname>
+                            <passphraseServerId>${gpg.keyname}</passphraseServerId>
+                            <useAgent>true</useAgent>
+                        </configuration>
+                        <goals>
+                            <goal>sign</goal>
+                        </goals>
+                        <id>sign-artifacts</id>
+                        <phase>verify</phase>
+                    </execution>
+                </executions>
+                <groupId>org.apache.maven.plugins</groupId>
+                <version>1.6</version>
+            </plugin>
+
+            <plugin>
                 <artifactId>maven-shade-plugin</artifactId>
+                <configuration>
+                    <artifactSet>
+                        <excludes>
+                            <exclude>org.bouncycastle:bc-fips</exclude>
+                        </excludes>
+                        <includes>
+                            <include>com.keepersecurity:secretsManager:*</include>
+                        </includes>
+                    </artifactSet>
+                    <filters>
+                        <filter>
+                            <artifact>*:*</artifact>
+                            <excludes>
+                                <exclude>META-INF/LICENSE</exclude>
+                                <exclude>META-INF/MANIFEST.MF</exclude>
+                                <exclude>META-INF/NOTICE</exclude>
+                                <exclude>META-INF/*.DSA</exclude>
+                                <exclude>META-INF/*.RSA</exclude>
+                                <exclude>META-INF/*.SF</exclude>
+                            </excludes>
+                        </filter>
+                    </filters>
+                </configuration>
                 <executions>
                     <execution>
                         <configuration>
@@ -93,6 +141,21 @@
                 </executions>
                 <groupId>org.apache.maven.plugins</groupId>
                 <version>3.6.0</version>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <addClasspath>true</addClasspath>
+                            <classpathPrefix>dependency/</classpathPrefix>
+                            <mainClass>${project.groupId}.credcat.SecretsService</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+                <groupId>org.apache.maven.plugins</groupId>
+                <version>3.4.2</version>
             </plugin>
 
             <plugin>
@@ -141,7 +204,7 @@
             </exclusions>
             <groupId>org.junit.jupiter</groupId>
             <scope>test</scope>
-            <version>5.13.4</version>
+            <version>6.0.1</version>
         </dependency>
 
         <dependency>
@@ -158,7 +221,14 @@
             </exclusions>
             <groupId>org.junit.jupiter</groupId>
             <scope>test</scope>
-            <version>5.13.4</version>
+            <version>6.0.1</version>
+        </dependency>
+
+        <dependency>
+            <artifactId>junit-jupiter-params</artifactId>
+            <groupId>org.junit.jupiter</groupId>
+            <scope>test</scope>
+            <version>6.0.1</version>
         </dependency>
 
         <dependency>
@@ -217,8 +287,15 @@
                     <name>GitHub Packages</name>
                     <url>https://maven.pkg.${source.host}/${source.account}/${project.artifactId}</url>
                 </repository>
+                <snapshotRepository>
+                    <id>github</id>
+                    <url>https://maven.pkg.${source.host}/${source.account}/${project.artifactId}</url>
+                </snapshotRepository>
             </distributionManagement>
             <id>github</id>
+            <properties>
+                <gpg.keyname>github</gpg.keyname>
+            </properties>
         </profile>
         <profile>
             <distributionManagement>
@@ -227,8 +304,15 @@
                     <name>Central Repository OSSRH</name>
                     <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
                 </repository>
+                <snapshotRepository>
+                    <id>ossrh</id>
+                    <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+                </snapshotRepository>
             </distributionManagement>
             <id>ossrh</id>
+            <properties>
+                <gpg.keyname>ossrh</gpg.keyname>
+            </properties>
         </profile>
     </profiles>
 

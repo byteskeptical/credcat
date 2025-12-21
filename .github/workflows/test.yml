@@ -12,21 +12,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java-distribution: ['corretto', 'dragonwell', 'jetbrains', 'liberica', 'microsoft', 'oracle', 'sapmachine', 'semeru', 'zulu']
+        java-distribution: ['corretto', 'dragonwell', 'liberica', 'microsoft', 'oracle', 'sapmachine', 'semeru', 'zulu']
         java-version: ['17', '21']
-        os: [macos-13, macos-latest, ubuntu-22.04, ubuntu-latest, windows-latest]
+        os: [macos-15-intel, macos-latest, ubuntu-22.04, ubuntu-latest, windows-latest]
         exclude:
-          - os: macos-13
+          - os: macos-15-intel
             java-distribution: 'dragonwell'
             java-version: '17'
-          - os: macos-13
-            java-distribution: 'jetbrains'
-            java-version: '17'
-          - os: macos-13
+          - os: macos-15-intel
             java-distribution: 'dragonwell'
-            java-version: '21'
-          - os: macos-13
-            java-distribution: 'jetbrains'
             java-version: '21'
           - os: macos-latest
             java-distribution: 'dragonwell'
