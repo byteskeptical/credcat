@@ -9,7 +9,7 @@ permissions:
   packages: write
 
 jobs:
-  pypi:
+  ossrh:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: true

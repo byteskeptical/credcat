@@ -573,11 +573,9 @@ public class SecretsService {
      */
     static class SecretsHandler implements HttpHandler {
         private final SecretsService service;
-        private final AppConfig appConfig;
 
-        SecretsHandler(SecretsService service, AppConfig appConfig) {
+        SecretsHandler(SecretsService service) {
             this.service = service;
-            this.appConfig = appConfig;
         }
 
         @Override
@@ -659,7 +657,7 @@ public class SecretsService {
 
                 server.createContext(
                         "/api/getSecrets",
-                        new SecretsHandler(service, config)
+                        new SecretsHandler(service)
                 );
                 server.createContext(
                         "/api/version",
