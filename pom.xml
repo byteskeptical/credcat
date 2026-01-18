@@ -269,6 +269,13 @@
         <url>https://${source.host}/${source.account}/${project.name}/issues</url>
     </issueManagement>
 
+    <licenses>
+        <license>
+            <name>BSD 3-Clause "New" or "Revised" License</name>
+            <url>https://${source.host}/${source.account}/${project.name}/blob/root/LICENSE</url>
+        </license>
+    </licenses>
+
     <organization>
         <name>${organization.name}</name>
         <url>https://${source.account}.com/</url>
