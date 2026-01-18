@@ -1,8 +1,5 @@
 package com.byteskeptical.credcat.model;
 
-import java.util.List;
-import java.util.Map;
-
 /**
  * Record(s) fields format.
  */

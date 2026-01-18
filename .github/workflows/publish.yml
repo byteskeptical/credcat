@@ -9,7 +9,7 @@ permissions:
   packages: write
 
 jobs:
-  pypi:
+  publish:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: true
