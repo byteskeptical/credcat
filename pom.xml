@@ -98,6 +98,38 @@
             </plugin>
 
             <plugin>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <addClasspath>true</addClasspath>
+                            <classpathPrefix>dependency/</classpathPrefix>
+                            <mainClass>${project.groupId}.credcat.SecretsService</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+                <groupId>org.apache.maven.plugins</groupId>
+                <version>3.4.2</version>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <configuration>
+                    <detectJavaApiLink>false</detectJavaApiLink>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <id>attach-javadocs</id>
+                    </execution>
+                </executions>
+                <groupId>org.apache.maven.plugins</groupId>
+                <version>3.12.0</version>
+            </plugin>
+
+            <plugin>
                 <artifactId>maven-shade-plugin</artifactId>
                 <configuration>
                     <artifactSet>
@@ -142,18 +174,17 @@
             </plugin>
 
             <plugin>
-                <artifactId>maven-jar-plugin</artifactId>
-                <configuration>
-                    <archive>
-                        <manifest>
-                            <addClasspath>true</addClasspath>
-                            <classpathPrefix>dependency/</classpathPrefix>
-                            <mainClass>${project.groupId}.credcat.SecretsService</mainClass>
-                        </manifest>
-                    </archive>
-                </configuration>
+                <artifactId>maven-source-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar-no-fork</goal>
+                        </goals>
+                    </execution>
+                </executions>
                 <groupId>org.apache.maven.plugins</groupId>
-                <version>3.4.2</version>
+                <version>3.4.0</version>
             </plugin>
 
             <plugin>
@@ -304,11 +335,11 @@
                 <repository>
                     <id>ossrh</id>
                     <name>Central Repository OSSRH</name>
-                    <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+                    <url>https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/</url>
                 </repository>
                 <snapshotRepository>
                     <id>ossrh</id>
-                    <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+                    <url>https://central.sonatype.com/repository/maven-snapshots/</url>
                 </snapshotRepository>
             </distributionManagement>
             <id>ossrh</id>
