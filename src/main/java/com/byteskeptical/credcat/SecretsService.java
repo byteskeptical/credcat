@@ -1,7 +1,11 @@
 package com.byteskeptical.credcat;
 
+import com.byteskeptical.credcat.config.KeeperConfig;
+import com.byteskeptical.credcat.file.FileHandler;
+import com.byteskeptical.credcat.file.FileTransport;
 import com.byteskeptical.credcat.model.KeeperRequest;
 import com.byteskeptical.credcat.model.SecretResponse;
+import com.byteskeptical.credcat.util.Checks;
 import com.byteskeptical.credcat.util.JsonHandler;
 import com.keepersecurity.secretsManager.core.AccountNumber;
 import com.keepersecurity.secretsManager.core.AddressRef;
@@ -14,12 +18,14 @@ import com.keepersecurity.secretsManager.core.ExpirationDate;
 import com.keepersecurity.secretsManager.core.FileRef;
 import com.keepersecurity.secretsManager.core.HiddenField;
 import com.keepersecurity.secretsManager.core.Hosts;
+import com.keepersecurity.secretsManager.core.InMemoryStorage;
 import com.keepersecurity.secretsManager.core.KeeperFile;
 import com.keepersecurity.secretsManager.core.KeeperRecord;
 import com.keepersecurity.secretsManager.core.KeeperRecordData;
 import com.keepersecurity.secretsManager.core.KeeperRecordField;
 import com.keepersecurity.secretsManager.core.KeeperSecrets;
 import com.keepersecurity.secretsManager.core.KeyPairs;
+import com.keepersecurity.secretsManager.core.KeyValueStorage;
 import com.keepersecurity.secretsManager.core.LicenseNumber;
 import com.keepersecurity.secretsManager.core.LocalConfigStorage;
 import com.keepersecurity.secretsManager.core.Login;
@@ -42,50 +48,61 @@ import com.keepersecurity.secretsManager.core.Url;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.security.Security;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.logging.Level;
+import java.util.logging.LogManager;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import org.bouncycastle.jcajce.provider.BouncyCastleFipsProvider;
 
 /**
  * Your confidant in the cloud.
  */
 public class SecretsService {
 
-    private static final String CONFIG = "credcat.properties";
-    private static final String DOMAIN = "keepersecurity.com";
-    private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool();
+    private static final int MAX_REQUEST_BYTES = 1024 * 1024;
+    private static final int THREADS =
+            Math.max(8, Runtime.getRuntime().availableProcessors() * 2);
     private static final Logger LOGGER = Logger.getLogger(
             SecretsService.class.getName()
     );
+    private static final String CONFIG = "credcat.properties";
+    private static final String DOMAIN = "keepersecurity.com";
+    private static final String LOGGING = "logging.properties";
+    private static final String VERSION = "1.1.0";
 
     static {
-        Security.addProvider(new BouncyCastleFipsProvider());
+        initLogging();
+        bouncyCastle();
     }
 
     private final AppConfig appConfig;
@@ -105,28 +122,26 @@ public class SecretsService {
      * @return A string representing the service version.
      */
     public String getVersion() {
-        return "1.0.0";
-    }
+        Package pkg = SecretsService.class.getPackage();
+        String version = pkg != null ? pkg.getImplementationVersion() : null;
 
-    /**
-     * Checks if a string is null or empty.
-     *
-     * @param str A string to check.
-     * @return {@code true} if the string is null or empty, {@code false} otherwise.
-     */
-    public static boolean isNullOrEmpty(String str) {
-        return str == null || str.isEmpty();
+        return version != null ? version : VERSION;
     }
 
     /**
      * Load properties, provide sane defaults.
      */
     static class AppConfig {
+        final boolean autoClean;
+        final boolean persistentStorage;
+        final FileTransport fileTransport;
+        final int threads;
+        final int maxRequestBytes;
         final int port;
+        final KeeperConfig keeperConfig;
+        final Path filesDir;
         final String clientKey;
-        final String filesLocation;
         final String host;
-        final String keeperConfig;
 
         /**
          * Properties from classpath or filesystem, prioritizing filesystem.
@@ -144,7 +159,7 @@ public class SecretsService {
                 }
             } catch (IOException e) {
                 LOGGER.log(Level.WARNING,
-                           "Classpath config " + CONFIG + " could not be read.", e
+                        "Classpath config " + CONFIG + " could not be read.", e
                 );
             }
 
@@ -154,43 +169,90 @@ public class SecretsService {
                 try (FileInputStream fis = new FileInputStream(fsConfig)) {
                     props.load(fis);
                     LOGGER.log(Level.INFO,
-                               "Loaded configuration from {0}",
-                                   fsConfig.getAbsolutePath()
+                            "Loaded configuration from {0}",
+                            fsConfig.getAbsolutePath()
                     );
                 } catch (IOException e) {
                     LOGGER.log(Level.SEVERE,
-                               "Found the config " + CONFIG
-                               + " but failed to read it. Check the permissions.",                                    e
+                            "Found the config " + CONFIG
+                            + " but failed to read it. Check the permissions.", e
                     );
                     throw e;
                 }
             }
 
-            String osTemp = System.getProperty("java.io.tmpdir");
-            String keeperDir = "credcat_" + UUID.randomUUID().toString();
-            String keeperFiles = Path.of(osTemp, keeperDir).toString();
-
-            this.clientKey = props.getProperty("keeper.client_key", null);
-            this.filesLocation = props.getProperty("keeper.files", keeperFiles);
+            this.autoClean = Boolean.parseBoolean(
+                    props.getProperty("file.clean", "true"));
+            this.clientKey = Checks.trimToNull(props.getProperty("keeper.client_key"));
+            this.fileTransport = FileTransport.parse(
+                    props.getProperty("file.transport"), FileTransport.INLINE);
             this.host = props.getProperty("server.host", "127.0.0.1");
-            this.port = Integer.parseInt(props.getProperty("server.port", "8080"));
-            String keepConf = props.getProperty("keeper.config");
-            if (keepConf != null && !keepConf.isBlank()) {
-                Path configPath = Path.of(keepConf);
-                if (Files.exists(configPath)) {
-                    this.keeperConfig = Files.readString(configPath);
-                } else {
-                    this.keeperConfig = keepConf;
-                }
+            this.maxRequestBytes = parseInt(
+                    props.getProperty("server.max_request_bytes"), MAX_REQUEST_BYTES);
+            this.port = parseInt(props.getProperty("server.port"), 8888);
+            this.threads = parseInt(
+                    props.getProperty("server.threads"), THREADS);
+
+            String filesProp = Checks.trimToNull(props.getProperty("keeper.files"));
+            if (filesProp != null) {
+                this.filesDir = Path.of(filesProp);
             } else {
-                this.keeperConfig = null;
+                String osTemp = System.getProperty("java.io.tmpdir");
+                this.filesDir = Path.of(osTemp, "credcat_" + UUID.randomUUID());
+            }
+
+            // Storage mode default is in-memory. LocalConfigStorage when
+            // token refresh persistence is desired on a writable filesystem.
+            this.persistentStorage = Boolean.parseBoolean(
+                    props.getProperty("keeper.storage.persistent", "false"));
+
+            // Default keeper.config, can be a file path or literal content.
+            String configProp = Checks.trimToNull(props.getProperty("keeper.config"));
+            String keeperConfig = null;
+
+            if (configProp != null) {
+                KeeperConfig bootstrap = new KeeperConfig(null, null, null);
+                KeeperConfig.KSM seed = bootstrap.interpret(configProp);
+                if (seed != null) {
+                    keeperConfig = seed.getContent();
+                }
+            }
+
+            // Named-config sources. Filesystem dir, env vars.
+            String dirProp = Checks.trimToNull(props.getProperty("keeper.config.dir"));
+            Path dirPath = dirProp != null ? Path.of(dirProp) : null;
+
+            if (dirPath != null && !Files.isDirectory(dirPath)) {
+                LOGGER.log(Level.WARNING,
+                        "keeper.config.dir is not a directory; ignoring: {0}", dirPath);
+                dirPath = null;
+            }
+
+            String envPrefix = Checks.trimToNull(props.getProperty("keeper.config.env"));
+            this.keeperConfig = new KeeperConfig(keeperConfig, dirPath, envPrefix);
+        }
+
+        private static int parseInt(String s, int fallback) {
+            if (Checks.isNullOrBlank(s)) {
+                return fallback;
+            }
+
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException e) {
+                LOGGER.log(Level.WARNING,
+                        "Invalid numeric property ''{0}''; using default {1}.",
+                        new Object[] { s, fallback });
+                return fallback;
             }
         }
     }
 
     /**
      * Find KeeperRecords by UIDs and/or titles.
-     * Uses the optimized UID filter for UIDs and iterates for titles.
+     * Uses the SDK's UID filter when only UIDs are supplied; otherwise fetches
+     * once and filters in-process. Records are deduplicated by UID to handle
+     * overlap between the two lookups.
      *
      * @param options A instance of SecretsManagerOptions to use in the lookup.
      * @param titles A list of strings representing KeeperRecord title names.
@@ -200,34 +262,57 @@ public class SecretsService {
     List<KeeperRecord> findRecords(
             SecretsManagerOptions options, List<String> titles, List<String> uids
     ) {
-        Set<KeeperRecord> records = new HashSet<>();
+        boolean hasUids = !Checks.isNullOrEmpty(uids);
+        boolean hasTitles = !Checks.isNullOrEmpty(titles);
+
+        if (!hasUids && !hasTitles) {
+            return Collections.emptyList();
+        }
+
+        Map<String, KeeperRecord> byUid = new LinkedHashMap<>();
 
         try {
-            if (uids != null && !uids.isEmpty()) {
-                KeeperSecrets recordsByUid = SecretsManager.getSecrets(options, uids);
-                records.addAll(recordsByUid.getRecords());
-                LOGGER.log(Level.INFO, "Found {0} records by UID.", records.size());
-            }
+            if (hasTitles) {
+                // Title resolution requires a full fetch; piggy-back UID matching on it.
+                KeeperSecrets all = SecretsManager.getSecrets(options);
 
-            if (titles != null && !titles.isEmpty()) {
-                KeeperSecrets recordsByTitle = SecretsManager.getSecrets(options);
+                if (hasUids) {
+                    Set<String> uidSet = new HashSet<>(uids);
+                    for (KeeperRecord record : all.getRecords()) {
+                        if (uidSet.contains(record.getRecordUid())) {
+                            byUid.put(record.getRecordUid(), record);
+                        }
+                    }
+                    LOGGER.log(Level.INFO,
+                            "Matched {0} record(s) by UID from full fetch.", byUid.size());
+                }
+
                 for (String title : titles) {
-                    KeeperRecord record = recordsByTitle.getSecretByTitle(title);
+                    KeeperRecord record = all.getSecretByTitle(title);
                     if (record != null) {
-                        records.add(record);
+                        byUid.putIfAbsent(record.getRecordUid(), record);
                         LOGGER.log(Level.INFO,
-                                   "Found record by title: ''{0}''", title);
+                                "Found record by title: ''{0}''", title);
                     } else {
                         LOGGER.log(Level.WARNING,
-                                   "Record with title ''{0}'' not found.", title);
+                                "Record with title ''{0}'' not found.", title);
                     }
                 }
+            } else {
+                // UID-only path: let the SDK do the server-side filter.
+                KeeperSecrets byUidFetch = SecretsManager.getSecrets(options, uids);
+                for (KeeperRecord record : byUidFetch.getRecords()) {
+                    byUid.put(record.getRecordUid(), record);
+                }
+                LOGGER.log(Level.INFO, "Found {0} record(s) by UID.", byUid.size());
             }
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Retrieving record(s) failed!", e);
+            throw new RuntimeException(
+                    "Failed to retrieve records: " + e.getMessage(), e);
         }
 
-        return new ArrayList<>(records);
+        return new ArrayList<>(byUid.values());
     }
 
     /**
@@ -238,40 +323,40 @@ public class SecretsService {
      * @throws Exception if the request fails to process.
      */
     public String getSecrets(String jsonRequest) throws Exception {
-        LOGGER.log(Level.FINE, jsonRequest);
+        LOGGER.log(Level.FINE, "Received request payload of {0} bytes",
+                jsonRequest != null ? jsonRequest.length() : 0);
+
         KeeperRequest request = JsonHandler.fromJson(jsonRequest, KeeperRequest.class);
-
-        String keeperConfig = request.getConfig();
-        if (isNullOrEmpty(keeperConfig)) {
-            if (appConfig.keeperConfig == null) {
-                throw new IllegalArgumentException(
-                        "No Keeper config provided in request or properties."
-                );
-            }
-            keeperConfig = appConfig.keeperConfig;
+        if (request == null) {
+            throw new IllegalArgumentException("Request body is empty.");
         }
 
-        String clientKey = request.getClientKey();
-        if (isNullOrEmpty(clientKey)) {
-            if (appConfig.clientKey == null) {
-                clientKey = null;
-            } else {
-                clientKey = appConfig.clientKey;
-            }
+        KeeperConfig.KSM ksm = appConfig.keeperConfig.resolve(
+                request.getConfig(), request.getConfigName());
+        if (ksm == null) {
+            throw new IllegalArgumentException(
+                    "No Keeper config provided in request or properties."
+            );
         }
 
-        String saveLocation = request.getSaveLocation();
-        if (isNullOrEmpty(saveLocation)) {
-            saveLocation = appConfig.filesLocation;
-        }
+        String requestKey = request.getClientKey();
+        String clientKey = !Checks.isNullOrBlank(requestKey)
+                ? requestKey
+                : appConfig.clientKey;
 
-        LocalConfigStorage storage = null;
+        FileTransport transport = FileTransport.parse(
+                request.getFileTransport(), appConfig.fileTransport);
+        String requestLocation = request.getSaveLocation();
+        String saveLocation = !Checks.isNullOrBlank(requestLocation)
+                ? requestLocation
+                : appConfig.filesDir.toString();
+
+        KeyValueStorage storage;
         try {
-            storage = new LocalConfigStorage(keeperConfig);
+            storage = buildStorage(ksm);
         } catch (Exception e) {
-            String errorMessage = "Loading of KSM vault config failed. Be sure "
-                    + keeperConfig
-                    + " contains a valid base64 encoded string or JSON object.";
+            String errorMessage = "Loading of KSM vault config failed. "
+                    + "Ensure the config is valid base64-encoded or JSON.";
             LOGGER.log(Level.SEVERE, errorMessage, e);
             throw new RuntimeException(errorMessage, e);
         }
@@ -280,54 +365,75 @@ public class SecretsService {
             SecretsManager.initializeStorage(storage, clientKey, DOMAIN);
         }
 
-        SecretsManagerOptions options = null;
-        options = new SecretsManagerOptions(
+        SecretsManagerOptions options = new SecretsManagerOptions(
                 storage, SecretsManager::cachingPostFunction
         );
+
+        FileHandler fileHandler = FileHandler.forTransport(
+                transport, transport == FileTransport.DISK ? saveLocation : null);
 
         List<KeeperRecord> foundRecords = findRecords(
                 options, request.getTitles(), request.getUids()
         );
         Map<String, Map<String, Object>> records = processRecords(
-                foundRecords, saveLocation
+                foundRecords, fileHandler
         );
 
         return JsonHandler.toJson(records);
     }
 
     /**
+     * Picks the Keeper storage impl. In-memory by default; file-backed when
+     * persistent storage is enabled and the config came from a writable file.
+     */
+    KeyValueStorage buildStorage(KeeperConfig.KSM ksm) {
+        if (appConfig.persistentStorage && !Checks.isNullOrBlank(ksm.getOrigin())) {
+            Path path;
+            try {
+                path = Path.of(ksm.getOrigin());
+            } catch (InvalidPathException e) {
+                path = null;
+            }
+
+            if (path != null && Files.isRegularFile(path) && Files.isWritable(path)) {
+                LOGGER.log(Level.FINE, "Using LocalConfigStorage at {0}", path);
+                return new LocalConfigStorage(path.toString());
+            }
+        }
+
+        LOGGER.log(Level.FINE, "Using InMemoryStorage for Keeper config.");
+        return new InMemoryStorage(ksm.getContent());
+    }
+
+    /**
      * Downloads files attached to a KeeperRecord, provides its metadata.
      *
      * @param files A list of KeeperFile entries usually from a KeeperRecord.
-     * @param saveLocation Local path to save directory for record's files.
+     * @param handler The strategy to use for materializing each file.
      * @return A list of name, path file object details for downloaded files.
-     * @throws IOException if a file operation fails.
      */
     List<SecretResponse.FileInfo> processFiles(
-            List<KeeperFile> files, String saveLocation
-    ) throws IOException {
-        Path downloadDir = Path.of(saveLocation);
-
-        if (!Files.exists(downloadDir)) {
-            Files.createDirectories(downloadDir);
+            List<KeeperFile> files, FileHandler handler
+    ) {
+        if (Checks.isNullOrEmpty(files)) {
+            return Collections.emptyList();
         }
 
-        List<SecretResponse.FileInfo> fileInfos = new ArrayList<>();
+        List<SecretResponse.FileInfo> fileInfos = new ArrayList<>(files.size());
         for (KeeperFile file : files) {
             if (file == null) {
-                System.out.println("Could not find file with UID: " + file + " in record");
+                LOGGER.log(Level.WARNING,
+                        "Encountered null KeeperFile entry; skipping.");
                 continue;
             }
-            byte[] fileBytes = SecretsManager.downloadFile(file);
-
-            String name = file.getData().getName();
-            Path filePath = downloadDir.resolve(name);
-            try (FileOutputStream fos = new FileOutputStream(filePath.toFile())) {
-                fos.write(fileBytes);
-                fileInfos.add(new SecretResponse.FileInfo(name, filePath.toString()));
-                LOGGER.log(Level.INFO, "Successfully downloaded & saved file: {0}", name);
+            try {
+                fileInfos.add(handler.handle(file));
             } catch (Exception e) {
-                LOGGER.log(Level.SEVERE, "Saving file [" + name + "] failed!", e);
+                String name = file.getData() != null
+                        ? file.getData().getName()
+                        : file.getFileUid();
+                LOGGER.log(Level.SEVERE,
+                        "Processing file [" + name + "] failed!", e);
             }
         }
 
@@ -337,15 +443,14 @@ public class SecretsService {
     /**
      * Process record(s) field(s) values, organize in a structured format.
      *
-     * @param record A KeeperRecord entry.
-     * @param saveLocation Local path to save directory for record's files.
+     * @param records A list of KeeperRecord entries.
+     * @param fileHandler The file handler chosen for this request.
      * @return A hashmap of credential fields and their values.
-     * @throws IOException if a file operation fails during processing.
      */
     Map<String, Map<String, Object>> processRecords(
-            List<KeeperRecord> records, String saveLocation
-    ) throws IOException {
-        Map<String, Map<String, Object>> result = new HashMap<>();
+            List<KeeperRecord> records, FileHandler fileHandler
+    ) {
+        Map<String, Map<String, Object>> result = new LinkedHashMap<>();
 
         for (KeeperRecord record : records) {
             if (record == null) {
@@ -354,37 +459,35 @@ public class SecretsService {
 
             KeeperRecordData recordData = record.getData();
             final String recordUid = record.getRecordUid();
-            Map<String, Object> recordDetails = new HashMap<>();
-            Map<String, List<String>> fieldsMap = new HashMap<>();
-            List<SecretResponse.FileInfo> filesList = new ArrayList<>();
+            Map<String, Object> recordDetails = new LinkedHashMap<>();
+            Map<String, List<String>> fieldsMap = new LinkedHashMap<>();
 
             List<KeeperRecordField> fields = recordData.getFields();
             List<KeeperRecordField> customFields = recordData.getCustom();
-            Stream<KeeperRecordField> allFields = Stream.concat(fields.stream(),
-                                                                customFields.stream()
+            Stream<KeeperRecordField> allFields = Stream.concat(
+                    fields != null ? fields.stream() : Stream.empty(),
+                    customFields != null ? customFields.stream() : Stream.empty()
             );
 
             allFields.forEach(field -> {
                 String label = field.getLabel();
                 if (label == null) {
-                    label = field.getClass().getSimpleName().toLowerCase();
+                    label = field.getClass().getSimpleName().toLowerCase(Locale.ROOT);
                 }
 
                 List<String> values = xtraxField(field);
 
-                if (values != null && !values.isEmpty() && !isNullOrEmpty(values.get(0))) {
+                if (hasValue(values)) {
                     fieldsMap.put(label, values);
                 } else {
                     LOGGER.log(Level.FINE,
-                               "Skipped empty field value for field: {0}", label
+                            "Skipped empty field value for field: {0}", label
                     );
                 }
             });
 
             List<KeeperFile> files = record.getFiles();
-            if (files != null) {
-                filesList.addAll(processFiles(files, saveLocation));
-            }
+            List<SecretResponse.FileInfo> filesList = processFiles(files, fileHandler);
 
             recordDetails.put("fields", fieldsMap);
             recordDetails.put("files", filesList);
@@ -395,6 +498,53 @@ public class SecretsService {
         }
 
         return result;
+    }
+
+    /**
+     * Returns true if at least one value in the list is non-empty.
+     */
+    private static boolean hasValue(List<String> values) {
+        if (Checks.isNullOrEmpty(values)) {
+            return false;
+        }
+
+        for (String v : values) {
+            if (!Checks.isNullOrBlank(v)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Maps a list of structured values to their string form, tolerating a null
+     * input list and skipping null entries.
+     *
+     * @param values The source list (may be {@code null}).
+     * @param fn     Converter from a non-null value to its string form.
+     * @return A list of string forms, possibly empty, never {@code null}.
+     */
+    private static <T> List<String> mapValues(List<T> values, Function<T, String> fn) {
+        if (Checks.isNullOrEmpty(values)) {
+            return Collections.emptyList();
+        }
+
+        return values.stream()
+                .filter(Objects::nonNull)
+                .map(fn)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Formats epoch-millis timestamps as ISO-8601 UTC. Used identically by
+     * {@code BirthDate}, {@code Date}, and {@code ExpirationDate}
+     *
+     * @param timestamps A list of epoch-millisecond values; may be {@code null}.
+     * @return ISO-8601 string forms.
+     */
+    private static List<String> formatTimestamps(List<Long> timestamps) {
+        return mapValues(timestamps, ts -> Instant.ofEpochMilli(ts).toString());
     }
 
     /**
@@ -411,139 +561,97 @@ public class SecretsService {
         } else if (field instanceof AddressRef) {
             return ((AddressRef) field).getValue();
         } else if (field instanceof BankAccounts) {
-            return ((BankAccounts) field).getValue().stream()
-                .filter(Objects::nonNull)
-                .map(ba -> {
-                    return String.format("Type: %s, Routing: %s, Account: %s, Other: %s",
-                        ba.getAccountType(), ba.getRoutingNumber(),
-                        ba.getAccountNumber(), ba.getOtherType()
-                    );
-                })
-                .collect(Collectors.toList());
+            return mapValues(((BankAccounts) field).getValue(),
+                ba -> String.format("Type: %s, Routing: %s, Account: %s, Other: %s",
+                    ba.getAccountType(), ba.getRoutingNumber(),
+                    ba.getAccountNumber(), ba.getOtherType()));
         } else if (field instanceof BirthDate) {
-            return ((BirthDate) field).getValue().stream()
-                .filter(Objects::nonNull)
-                .map(timestamp -> new java.util.Date(timestamp).toString())
-                .collect(Collectors.toList());
+            return formatTimestamps(((BirthDate) field).getValue());
         } else if (field instanceof CardRef) {
             return ((CardRef) field).getValue();
         } else if (field instanceof Date) {
-            return ((Date) field).getValue().stream()
-                .map(Object::toString)
-                .collect(Collectors.toList());
+            return formatTimestamps(((Date) field).getValue());
         } else if (field instanceof Email) {
             return ((Email) field).getValue();
         } else if (field instanceof ExpirationDate) {
-            return ((ExpirationDate) field).getValue().stream()
-                .map(Object::toString)
-                .collect(Collectors.toList());
+            return formatTimestamps(((ExpirationDate) field).getValue());
         } else if (field instanceof FileRef) {
             return ((FileRef) field).getValue();
         } else if (field instanceof HiddenField) {
             return ((HiddenField) field).getValue();
         } else if (field instanceof Hosts) {
-            return ((Hosts) field).getValue().stream()
-                .filter(Objects::nonNull)
-                .map(h -> {
-                    return String.format("%s:%s", h.getHostName(), h.getPort());
-                })
-                .collect(Collectors.toList());
+            return mapValues(((Hosts) field).getValue(),
+                h -> String.format("%s:%s", h.getHostName(), h.getPort()));
         } else if (field instanceof KeyPairs) {
-            return ((KeyPairs) field).getValue().stream()
-                .filter(Objects::nonNull)
-                .map(kp -> {
-                    return String.format("Public Key: %s, Private Key: %s",
-                        kp.getPrivateKey(), kp.getPublicKey()
-                    );
-                })
-                .collect(Collectors.toList());
+            return mapValues(((KeyPairs) field).getValue(),
+                kp -> String.format("Public Key: %s, Private Key: %s",
+                    kp.getPublicKey(), kp.getPrivateKey()));
         } else if (field instanceof LicenseNumber) {
             return ((LicenseNumber) field).getValue();
         } else if (field instanceof Multiline) {
             return ((Multiline) field).getValue();
         } else if (field instanceof Names) {
-            return ((Names) field).getValue().stream()
-                .filter(Objects::nonNull)
-                .map(n -> {
-                    return String.format("%s %s %s",
-                        n.getFirst() != null ? n.getFirst() : "",
-                        n.getMiddle() != null ? n.getMiddle() : "",
-                        n.getLast() != null ? n.getLast() : ""
-                    ).trim();
-                })
-                .collect(Collectors.toList());
+            return mapValues(((Names) field).getValue(),
+                n -> String.format("%s %s %s",
+                    n.getFirst() != null ? n.getFirst() : "",
+                    n.getMiddle() != null ? n.getMiddle() : "",
+                    n.getLast() != null ? n.getLast() : "")
+                    .trim().replaceAll("\\s+", " "));
         } else if (field instanceof OneTimeCode) {
-            return ((OneTimeCode) field).getValue().stream()
-                .filter(Objects::nonNull)
-                .map(url -> {
-                    TotpCode totp = TotpCode.uriToTotpCode(url);
-                    return List.of(
-                        totp.getCode(),
-                        String.valueOf(totp.getTimeLeft())
-                    );
-                })
-                .flatMap(List::stream)
-                .collect(Collectors.toList());
+            // OneTimeCode emits two values per source URL (code + timeLeft),
+            // so it's the one case mapValues can't fully cover
+            List<String> urls = ((OneTimeCode) field).getValue();
+            if (Checks.isNullOrEmpty(urls)) {
+                return Collections.emptyList();
+            }
+
+            List<String> result = new ArrayList<>(urls.size() * 2);
+            for (String url : urls) {
+                if (url == null) {
+                    continue;
+                }
+
+                TotpCode totp = TotpCode.uriToTotpCode(url);
+                result.add(totp.getCode());
+                result.add(String.valueOf(totp.getTimeLeft()));
+            }
+
+            return result;
         } else if (field instanceof OneTimePassword) {
             return ((OneTimePassword) field).getValue();
         } else if (field instanceof Passkeys) {
-            return ((Passkeys) field).getValue().stream()
-                .filter(Objects::nonNull)
-                .map(pk -> {
-                    return String.format("%s, %s, %s, %s, %s, %s, %s",
-                        pk.getCredentialId(),
-                        pk.getSignCount(),
-                        pk.getUserId(),
-                        pk.getRelyingParty(),
-                        pk.getUsername(),
-                        pk.getCreatedDate(),
-                        pk.getPrivateKey()
-                    );
-                })
-                .collect(Collectors.toList());
+            return mapValues(((Passkeys) field).getValue(),
+                pk -> String.format("%s, %s, %s, %s, %s, %s, %s",
+                    pk.getCredentialId(), pk.getSignCount(),
+                    pk.getUserId(), pk.getRelyingParty(),
+                    pk.getUsername(), pk.getCreatedDate(),
+                    pk.getPrivateKey()));
         } else if (field instanceof Password) {
             return ((Password) field).getValue();
         } else if (field instanceof PaymentCards) {
-            return ((PaymentCards) field).getValue().stream()
-                .filter(Objects::nonNull)
-                .map(pc -> {
-                    return String.format("%s, %s, %s",
-                        pc.getCardNumber(),
-                        pc.getCardExpirationDate(),
-                        pc.getCardSecurityCode()
-                    );
-                })
-                .collect(Collectors.toList());
+            return mapValues(((PaymentCards) field).getValue(),
+                pc -> String.format("%s, %s, %s",
+                    pc.getCardNumber(),
+                    pc.getCardExpirationDate(),
+                    pc.getCardSecurityCode()));
         } else if (field instanceof Phones) {
-            return ((Phones) field).getValue().stream()
-                .filter(Objects::nonNull)
-                .map(p -> {
-                    return String.format("%s, %s",
-                        p.getType(), p.getNumber()
-                    );
-                })
-                .collect(Collectors.toList());
+            return mapValues(((Phones) field).getValue(),
+                p -> String.format("%s, %s", p.getType(), p.getNumber()));
         } else if (field instanceof PinCode) {
             return ((PinCode) field).getValue();
         } else if (field instanceof SecureNote) {
             return ((SecureNote) field).getValue();
         } else if (field instanceof SecurityQuestions) {
-            return ((SecurityQuestions) field).getValue().stream()
-                .filter(Objects::nonNull)
-                .map(sq -> {
-                    return String.format("%s, %s",
-                        sq.getQuestion(), sq.getAnswer()
-                    );
-                })
-                .collect(Collectors.toList());
+            return mapValues(((SecurityQuestions) field).getValue(),
+                sq -> String.format("%s, %s", sq.getQuestion(), sq.getAnswer()));
         } else if (field instanceof Text) {
             return ((Text) field).getValue();
         } else if (field instanceof Url) {
             return ((Url) field).getValue();
         } else {
             LOGGER.log(Level.WARNING,
-                       "Skipped strange & unexpected field type: {0}",
-                           field.getClass().getName()
+                    "Skipped strange & unexpected field type: {0}",
+                    field.getClass().getName()
             );
 
             return Collections.emptyList();
@@ -563,9 +671,35 @@ public class SecretsService {
         byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.sendResponseHeaders(statusCode, bytes.length);
+
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(bytes);
         }
+    }
+
+    /**
+     * Reads a bounded amount of bytes from the request body. Returns
+     * {@code null} when the body exceeds the configured maximum, in which
+     * case the handler should reply 413.
+     */
+    private static byte[] readRequest(InputStream in, int maxBytes) throws IOException {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream(
+                Math.min(maxBytes, 8192));
+        byte[] chunk = new byte[8192];
+        int read;
+        int total = 0;
+
+        while ((read = in.read(chunk)) != -1) {
+            total += read;
+
+            if (total > maxBytes) {
+                return null;
+            }
+
+            buf.write(chunk, 0, read);
+        }
+
+        return buf.toByteArray();
     }
 
     /**
@@ -573,31 +707,45 @@ public class SecretsService {
      */
     static class SecretsHandler implements HttpHandler {
         private final SecretsService service;
+        private final int maxRequestBytes;
 
         SecretsHandler(SecretsService service) {
             this.service = service;
+            this.maxRequestBytes = service.appConfig.maxRequestBytes;
         }
 
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                sendResponse(exchange, 405, "{\"error\": \"Method Not Allowed\"}");
+                sendResponse(exchange, 405,
+                        JsonHandler.envelope("error", "Method Not Allowed"));
                 return;
             }
 
             try (InputStream is = exchange.getRequestBody()) {
-                String request = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                byte[] body = readRequest(is, maxRequestBytes);
+
+                if (body == null) {
+                    sendResponse(exchange, 413, JsonHandler.envelope("error",
+                            "Request body exceeds " + maxRequestBytes + " bytes"));
+                    return;
+                }
+
+                String request = new String(body, StandardCharsets.UTF_8);
                 String response = service.getSecrets(request);
 
                 sendResponse(exchange, 200, response);
             } catch (IllegalArgumentException e) {
                 LOGGER.warning("Bad Request: " + e.getMessage());
-                sendResponse(exchange, 400, "{\"error\": \"" + e.getMessage() + "\"}");
+                sendResponse(exchange, 400,
+                        JsonHandler.envelope("error", e.getMessage()));
             } catch (Exception e) {
                 LOGGER.log(Level.SEVERE, "Internal Error", e);
-                sendResponse(exchange, 500,
-                             "{\"error\": \"Internal Server Error: " + e.getMessage() + "\"}"
-                );
+                String detail = e.getMessage() != null
+                        ? e.getMessage()
+                        : e.getClass().getSimpleName();
+                sendResponse(exchange, 500, JsonHandler.envelope("error",
+                        "Internal Server Error: " + detail));
             }
         }
     }
@@ -616,14 +764,94 @@ public class SecretsService {
         public void handle(HttpExchange exchange) throws IOException {
             if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                 sendResponse(exchange, 405,
-                             "{\"error\": \"Method Not Allowed\"}"
-                );
+                        JsonHandler.envelope("error", "Method Not Allowed"));
                 return;
             }
 
             sendResponse(exchange, 200,
-                         "{\"version\": \"" + service.getVersion() + "\"}"
-            );
+                    JsonHandler.envelope("version", service.getVersion()));
+        }
+    }
+
+    /**
+     * Recursively wipes the files directory at shutdown so we don't litter
+     * the host with credcat_* dirs. Gated solely by {@code file.clean}.
+     */
+    private static void cleanFilesDir(Path dir) {
+        if (dir == null || !Files.exists(dir)) {
+            return;
+        }
+
+        try (Stream<Path> walk = Files.walk(dir)) {
+            walk.sorted(Comparator.reverseOrder())
+                    .forEach(p -> {
+                        try {
+                            Files.deleteIfExists(p);
+                        } catch (IOException e) {
+                            LOGGER.log(Level.FINE,
+                                    "Failed to delete temp entry " + p, e);
+                        }
+                    });
+        } catch (IOException e) {
+            LOGGER.log(Level.FINE,
+                    "Failed to walk temp directory " + dir, e);
+        }
+    }
+
+    /**
+     * Logging bootstrap. JUL only auto-loads from a system property;
+     * we can't always set one, so we look in the classpath and then
+     * alongside the JAR. Honors the user's
+     * {@code -Djava.util.logging.config.file} when set.
+     */
+    private static void initLogging() {
+        if (System.getProperty("java.util.logging.config.file") != null) {
+            return;
+        }
+
+        // Filesystem first.
+        File fs = new File(LOGGING);
+        if (fs.isFile()) {
+            try (FileInputStream fis = new FileInputStream(fs)) {
+                LogManager.getLogManager().readConfiguration(fis);
+                return;
+            } catch (IOException e) {
+                // fall through to classpath
+            }
+        }
+
+        // Classpath fallback.
+        try (InputStream is = SecretsService.class.getClassLoader()
+                .getResourceAsStream(LOGGING)) {
+            if (is != null) {
+                LogManager.getLogManager().readConfiguration(is);
+            }
+        } catch (IOException ignored) {
+            // Stick with JVM defaults.
+        }
+    }
+
+    /**
+     * Adds the BouncyCastle FIPS provider if it's on the classpath. Some
+     * platforms ship without it; in that case we fall back to the platform
+     * defaults and log a warning instead of dying.
+     */
+    private static void bouncyCastle() {
+        try {
+            Class<?> providerClass = Class.forName(
+                    "org.bouncycastle.jcajce.provider.BouncyCastleFipsProvider");
+            java.security.Provider provider =
+                    (java.security.Provider) providerClass
+                            .getDeclaredConstructor().newInstance();
+            Security.addProvider(provider);
+        } catch (ClassNotFoundException e) {
+            LOGGER.log(Level.WARNING,
+                    "BouncyCastle FIPS provider not on classpath; "
+                    + "using platform defaults.");
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING,
+                    "Failed to install BouncyCastle FIPS provider; "
+                    + "using platform defaults.", e);
         }
     }
 
@@ -636,18 +864,24 @@ public class SecretsService {
         long startTime = System.currentTimeMillis();
 
         if (args.length == 0) {
-            System.out.println("Usage: java -jar credcat.jar [-server | '<json_request>']\n");
+            System.out.println(
+                    "Usage: java -jar credcat.jar "
+                    + "[-server | '<json_request>']\n"
+            );
             System.out.println(
                     "Example: java -jar credcat.jar '{"
-                    + "\"config\":\"config.json\", "
-                    + "\"titles\":[\"RECORD_TITLES\"], \"uids\":[\"RECORD_UID\"]}'"
+                    + "\"configName\":\"dev\", "
+                    + "\"titles\":[\"RECORD_TITLES\"], \"uids\":[\"RECORD_UID\"], "
+                    + "\"fileTransport\":\"INLINE\"}'"
             );
 
             return;
         }
 
+        ExecutorService executor = null;
+
         try {
-            AppConfig config = new AppConfig();
+            final AppConfig config = new AppConfig();
             SecretsService service = new SecretsService(config);
 
             if (args[0].equals("-server")) {
@@ -664,38 +898,56 @@ public class SecretsService {
                         new VersionHandler(service)
                 );
 
-                server.setExecutor(EXECUTOR);
+                executor = new ThreadPoolExecutor(
+                        config.threads, config.threads,
+                        60L, TimeUnit.SECONDS,
+                        new ArrayBlockingQueue<>(config.threads * 4),
+                        new ThreadPoolExecutor.CallerRunsPolicy()
+                );
+                final ExecutorService finalExecutor = executor;
+
+                server.setExecutor(executor);
                 server.start();
 
                 Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                     LOGGER.info("Herding credcat for you...");
                     server.stop(2);
-                    EXECUTOR.shutdown();
+                    finalExecutor.shutdown();
 
                     try {
-                        if (!EXECUTOR.awaitTermination(5, TimeUnit.SECONDS)) {
-                            EXECUTOR.shutdownNow();
+                        if (!finalExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                            finalExecutor.shutdownNow();
                         }
                     } catch (InterruptedException e) {
-                        EXECUTOR.shutdownNow();
+                        finalExecutor.shutdownNow();
+                        Thread.currentThread().interrupt();
+                    }
+
+                    if (config.autoClean) {
+                        cleanFilesDir(config.filesDir);
                     }
                 }));
 
+                long elapsed = System.currentTimeMillis() - startTime;
                 LOGGER.log(Level.INFO,
                         "Credcat started meowing in {0}ms on {1}:{2,number,#}",
-                        new Object[] {
-                          (System.currentTimeMillis() - startTime),
-                          config.host,
-                          config.port
-                        }
-                );
+                        new Object[] { elapsed, config.host, config.port });
             } else {
-                String response = service.getSecrets(args[0]);
-                LOGGER.log(Level.INFO, "--- Secrets Found ---");
-                System.out.println(response);
+                try {
+                    String response = service.getSecrets(args[0]);
+                    LOGGER.log(Level.INFO, "--- Secrets Found ---");
+                    System.out.println(response);
+                } finally {
+                    if (config.autoClean) {
+                        cleanFilesDir(config.filesDir);
+                    }
+                }
             }
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Execution failed in main method.", e);
+            if (executor != null) {
+                executor.shutdownNow();
+            }
         }
     }
 }

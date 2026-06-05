@@ -58,7 +58,12 @@
         <li><a href="#installation">Installation</a></li>
       </ul>
     </li>
-    <li><a href="#usage">Usage</a></li>
+    <li>
+      <a href="#usage">Usage</a>
+      <ul>
+        <li><a href="#configuration">Configuration</a></li>
+      </ul>
+    </li>
     <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#contributing">Contributing</a></li>
     <li><a href="#license">License</a></li>
@@ -133,7 +138,7 @@ packages like maven will be needed to utilize the provided pom file.
   $jdk_url = "https://aka.ms/download-jdk/microsoft-jdk-21-windows-x64.msi"
   $java_home = New-Item -ItemType Directory -Path "$env:ProgramFiles\Java" -Force
   $maven_home = New-Item -ItemType Directory -Path "$env:ProgramFiles\Apache\Maven" -Force
-  $maven_version = "3.9.11"
+  $maven_version = "3.9.16"
   $maven_url = "https://dlcdn.apache.org/maven/maven-3/$maven_version/binaries/apache-maven-$maven_version-bin.zip"
   Start-BitsTransfer -Destination "$env:USERPROFILE\Downloads\jdk-21.msi" -Source $jdk_url
   Start-BitsTransfer -Destination "$env:USERPROFILE\Downloads\maven.zip" -Source $maven_url
@@ -180,16 +185,59 @@ packages like maven will be needed to utilize the provided pom file.
 
 
 
+### Configuration
+
+Every knob lives in `credcat.properties`. All are optional and fall back to sane
+defaults, so an empty file is a working file. The `server.*` settings are ignored
+in stand-alone mode.
+
+   ```properties
+   # Keeper
+   keeper.client_key=                  # one time token for dynamic config creation
+   keeper.config=                      # default device config: a path, raw json, or base64
+   keeper.config.dir=                  # directory searched for named (configName) configs
+   keeper.config.env=                  # env var prefix searched for named (configName) configs
+   keeper.files=                       # default save location (os temp dir when unset)
+   keeper.storage.persistent=false     # persist SDK config mutations back to the source file
+
+   # Files
+   file.clean=true                     # wipe the files directory recursively on shutdown
+   file.transport=inline               # disk | inline | none
+
+   # Server
+   server.host=127.0.0.1
+   server.port=8888
+   server.max_request_bytes=1048576    # larger request bodies are rejected with a 413
+   server.threads=                     # worker pool size (defaults to max(8, 2x cpu cores))
+   ```
+
+A named lookup (`configName`) is resolved against `keeper.config.dir` first, then
+the `keeper.config.env` prefix; the literal `config` parameter always wins when both
+are present, and the `keeper.config` default backs them all.
+
+
+
 <!-- USAGE EXAMPLES -->
 ## Usage
 
-You will need to generate a device config for your KSM application in either
-base64 or json format. You can also use the one time password feature to generate
-the config dynamically using the clientKey parameter instead. Using the config
-parameter provides the means to switch between application vaults. You can pass
-one or more of either titles and/or record uid's to retrive multiple records at
-once. Exact matches only. Any files are downloaded locally and their save
-location is returned in the response.
+You will need a device config for your KSM application in either base64 or json
+format. Provide it directly with the `config` parameter, as a literal value or a
+path to a file holding one. Skip the config entirely and let credcat mint one on
+the fly via the one time password feature with the `clientKey` parameter. When
+direct or individual handling of device configs is undesired use the `configName`
+parameter to switch between pre-defined choices stashed in either a directory or
+through environment variables. The `config`, `configName` and `clientKey`
+parameters are your means to alternate between application vaults.
+
+Pass one or more of either titles and/or record uid's to retrieve multiple records
+at once. Exact matches only.
+
+Attached files are handed back however your deployment prefers, set globally with
+the `file.transport` property or overridden per-request with `fileTransport`:
+
+* `disk` ... written to the save location, whose path is returned in the response.
+* `inline` ... base64 encoded straight into the response; nothing touches the disk.
+* `none` ... skipped entirely; only the file's metadata comes back.
 
    ```sh
    Usage: java -jar credcat.jar [ -server | '{ "config": ".keeper/config.base64", "titles": ["RECORD_TITLE"], "uids": ["RECORD_UID"] }' ]
@@ -197,46 +245,63 @@ location is returned in the response.
 
 1. Payload can be any of the following.
    ```sh
-   ADVANCED='{ "clientKey": "7dae669a419ee250d0fd0e12d527f5f1", "config": "config.base64", "saveLocation": "/mnt/share/keeper", "titles": ["development ldap"], "uids": ["chnmFhEC38YCHhNY1pA8Vg"] }'
+   ADVANCED='{ "clientKey": "7dae669a419ee250d0fd0e12d527f5f1", "config": "config.base64", "fileTransport": "disk", "saveLocation": "/mnt/share/keeper", "titles": ["development ldap"], "uids": ["chnmFhEC38YCHhNY1pA8Vg"] }'
+   NAMED='{ "configName": "production", "titles": ["Production ClickToCall API Key", "development ldap"] }'
    TITLE_ONLY='{ "config": ".keeper/config.base64", "titles": ["Production ClickToCall API Key", "development ldap"] }'
-   UID_ONLY='{ "config": ".keeper/config.base64", "uids": ["7bN_ceW-p3_alVUNmI09Tw", "chnmGhEC39YCHhNy1pA8vg"] }'
+   UID_ONLY='{ "config": ".keeper/config.base64", "fileTransport": "disk", "uids": ["7bN_ceW-p3_alVUNmI09Tw", "chnmGhEC39YCHhNy1pA8vg"] }'
    ```
 
 2. Whether passing title or uid, records are returned nested under its respective uid.
+   Using the `disk` transport:
    ```sh
-   java -cp "target/classes:target/dependency/*" com.byteskeptical.credcat.SecretsService $ADVANCED
-   java -jar target/credcat.jar $UID_ONLY
+   java -cp "target/classes:target/dependency/*" com.byteskeptical.credcat.SecretsService "$ADVANCED"
+   java -jar target/credcat.jar "$UID_ONLY"
    ```
    ```json
    INFO: {
      "7bN_ceW-p3_alVUNmI09Tw" : {
-       "notes" : null,
-       "files" : [ ],
-       "type" : "login",
-       "title" : "development ldap",
        "fields" : {
          "password" : [ "bingbangboomdongle" ],
          "login" : [ "ldaptest" ]
-       }
+       },
+       "files" : [ ],
+       "title" : "development ldap",
+       "type" : "login"
      },
      "chnmGhEC39YCHhNy1pA8vg" : {
-       "notes" : "VALUE = x-ClickToCall-APIKey:be0d988f-063c-d654-ad1b-a54337f87233",
-       "files" : [ {
-         "name" : "ascii-art.txt",
-         "path" : "/mnt/share/keeper-2452814181455428916/ascii-art.txt"
-       }, {
-         "name" : "integration.ucaas.call.metadata.PNG",
-         "path" : "/mnt/share/keeper-2452814181455428916/integration.ucaas.call.metadata.PNG"
-       } ],
-       "type" : "login",
-       "title" : "Production ClickToCall API Key",
        "fields" : {
          "password" : [ "be0d988f-063c-d654-ad1b-a54337f87233" ],
          "login" : [ "integration.ucaas.call.metadata" ],
          "fileref" : [ "3HcX3vCCvHBTBcOqCgCnsQ", "cGBiPmG_9GlZszFbsQmJea" ]
+       },
+       "files" : [ {
+         "name" : "ascii-art.txt",
+         "path" : "/tmp/credcat_8f3a1c20-5e7b-4a9d-bd11-2c6f0e9a4477/ascii-art.txt",
+         "mimeType" : "text/plain",
+         "size" : 318
+       }, {
+         "name" : "integration.ucaas.call.metadata.PNG",
+         "path" : "/tmp/credcat_8f3a1c20-5e7b-4a9d-bd11-2c6f0e9a4477/integration.ucaas.call.metadata.PNG",
+         "mimeType" : "image/png",
+         "size" : 20480
+       } ],
+       "notes" : "VALUE = x-ClickToCall-APIKey:be0d988f-063c-d654-ad1b-a54337f87233",
+       "title" : "Production ClickToCall API Key",
+       "type" : "login"
        }
      }
    }
+   ```
+
+   The default `inline` transport trades a file `path` for base64 `content`, leaving
+   nothing on the host:
+   ```json
+   "files" : [ {
+     "content" : "ICAgIC9cX18vXAogICAoIC1fLSApCiAgIC8gPiA+IFwK",
+     "mimeType" : "text/plain",
+     "name" : "ascii-art.txt",
+     "size" : 318
+   } ]
    ```
 
 3. Running in server mode accepts the same request payload, passed by the http client of your choice.
@@ -246,8 +311,8 @@ location is returned in the response.
    java -jar target/credcat.jar -server
    ```
    ```sh
-   curl -d $UID_ONLY -H 'Content-Type: application/json' -v -XPOST http://127.0.0.1:8888/api/getSecrets
-   curl -H 'Content-Type: application/json' -v http://127.0.0.1:8888/api/getVersion
+   curl -d "$UID_ONLY" -H 'Content-Type: application/json' -s -XPOST http://127.0.0.1:8888/api/getSecrets
+   curl -H 'Content-Type: application/json' -s http://127.0.0.1:8888/api/getVersion
    ```
 
 
@@ -263,6 +328,9 @@ location is returned in the response.
 
 - [x] Handle all field types including files & notes
 - [x] Handle title & uid searches
+- [x] Inline and metadata-only file transports for read-only & ephemeral hosts
+- [x] Named config resolution by directory or environment
+- [x] Per-request transport & save-location overrides
 - [x] Retrieve more than one record in a single request
 - [x] Support stand-alone and server modes
 
