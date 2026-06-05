@@ -53,7 +53,7 @@ class SecretsServiceTest {
     void setUp() throws IOException {
         service = new SecretsService(mockConfig);
 
-        // NONE transport touches no disk -- ideal for record/field unit tests.
+        // NONE transport touches no disk, perfect for unit tests.
         fileHandler = FileHandler.forTransport(FileTransport.NONE, null);
 
         lenient().when(mockRecord.getData()).thenReturn(mockRecordData);
@@ -157,7 +157,7 @@ class SecretsServiceTest {
     }
 
     /**
-     * Data provider for the parameterized test.
+     * Data provider for parameterized test.
      * (TestName, ExpectedOutput, MockField)
      *
      * <p>Stubs are lenient: every mock is built up front but each test
@@ -180,7 +180,7 @@ class SecretsServiceTest {
 
         String bankString = "Type: Checking, Routing: 123, Account: 456, Other: N/A";
 
-        // Unknown type, no stubs needed, Falls through to the empty list.
+        // Unknown type, no stubs needed, falls through to the empty list.
         KeeperRecordField unknown = mock(KeeperRecordField.class);
 
         return Stream.of(
