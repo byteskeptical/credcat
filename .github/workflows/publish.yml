@@ -28,8 +28,8 @@ jobs:
           java-package: 'jdk'
           java-version: '21'
           server-id: central
-          server-password: CRENTRAL_PASSWORD
-          server-username: CRENTRAL_USERNAME
+          server-password: CENTRAL_PASSWORD
+          server-username: CENTRAL_USERNAME
       - name: Publish to the Maven Central Repository
         run: mvn -B -P central -U deploy
         env:
