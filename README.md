@@ -235,9 +235,9 @@ at once. Exact matches only.
 Attached files are handed back however your deployment prefers, set globally with
 the `file.transport` property or overridden per-request with `fileTransport`:
 
-* `disk` ... written to the save location, whose path is returned in the response.
-* `inline` ... base64 encoded straight into the response; nothing touches the disk.
-* `none` ... skipped entirely; only the file's metadata comes back.
+* `disk`   written to the save location, whose path is returned in the response.
+* `inline` base64 encoded straight into the response; nothing touches the disk.
+* `none`   skipped entirely; only the file's metadata comes back.
 
    ```sh
    Usage: java -jar credcat.jar [ -server | '{ "config": ".keeper/config.base64", "titles": ["RECORD_TITLE"], "uids": ["RECORD_UID"] }' ]
