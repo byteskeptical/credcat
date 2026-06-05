@@ -8,26 +8,46 @@ import java.util.List;
 public class KeeperRequest {
     private String clientKey;
     private String config;
+    private String configName;
+    private String fileTransport;
     private String saveLocation;
     private List<String> titles;
     private List<String> uids;
 
     /**
-     * Gets the configuration path.
+     * Gets the configuration path or literal.
      *
-     * @return The configuration path.
+     * @return The configuration value.
      */
     public String getConfig() {
         return config;
     }
 
     /**
-     * Sets the configuration path.
+     * Sets the configuration path or literal.
      *
-     * @param config The configuration path to set.
+     * @param config The configuration value to set.
      */
     public void setConfig(String config) {
         this.config = config;
+    }
+
+    /**
+     * Gets the symbolic config name to look up (e.g. "dev").
+     *
+     * @return The config name.
+     */
+    public String getConfigName() {
+        return configName;
+    }
+
+    /**
+     * Sets the symbolic config name to look up.
+     *
+     * @param configName The config name to set.
+     */
+    public void setConfigName(String configName) {
+        this.configName = configName;
     }
 
     /**
@@ -46,6 +66,24 @@ public class KeeperRequest {
      */
     public void setClientKey(String clientKey) {
         this.clientKey = clientKey;
+    }
+
+    /**
+     * Gets the per-request file transport override (DISK, INLINE, NONE).
+     *
+     * @return The file transport value.
+     */
+    public String getFileTransport() {
+        return fileTransport;
+    }
+
+    /**
+     * Sets the per-request file transport override.
+     *
+     * @param fileTransport The file transport value to set.
+     */
+    public void setFileTransport(String fileTransport) {
+        this.fileTransport = fileTransport;
     }
 
     /**

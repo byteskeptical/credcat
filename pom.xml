@@ -9,7 +9,7 @@
     <name>credcat</name>
     <packaging>jar</packaging>
     <url>https://${source.host}/${source.account}/${project.name}/</url>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
 
     <build>
         <plugins>
@@ -331,18 +331,22 @@
             <id>github</id>
         </profile>
         <profile>
-            <distributionManagement>
-                <repository>
-                    <id>ossrh</id>
-                    <name>Central Repository OSSRH</name>
-                    <url>https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/</url>
-                </repository>
-                <snapshotRepository>
-                    <id>ossrh</id>
-                    <url>https://central.sonatype.com/repository/maven-snapshots/</url>
-                </snapshotRepository>
-            </distributionManagement>
-            <id>ossrh</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <configuration>
+                            <autoPublish>true</autoPublish>
+                            <publishingServerId>central</publishingServerId>
+                            <waitUntil>published</waitUntil>
+                        </configuration>
+                        <extensions>true</extensions>
+                        <groupId>org.sonatype.central</groupId>
+                        <version>0.10.0</version>
+                    </plugin>
+                </plugins>
+            </build>
+            <id>central</id>
         </profile>
     </profiles>
 
