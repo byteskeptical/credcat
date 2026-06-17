@@ -202,13 +202,26 @@ in stand-alone mode.
 
    # Files
    file.clean=true                     # wipe the files directory recursively on shutdown
-   file.transport=inline               # disk | inline | none
+   file.transport=inline               # record attachments: disk | inline | none
 
    # Server
-   server.host=127.0.0.1
-   server.port=8888
+   server.host=127.0.0.1               # hostname or IP for server service to run on 
+   server.port=8888                    # port to bind service on. Prefer >= 1024
    server.max_request_bytes=1048576    # larger request bodies are rejected with a 413
    server.threads=                     # worker pool size (defaults to max(8, 2x cpu cores))
+
+   # TLS
+   server.tls.client_auth=NONE         # mutual tls: need | none | want
+   server.tls.enabled=false            # serve https instead of http
+   server.tls.keystore=                # path to keystore holding server certificate
+   server.tls.keystore_password=       # literal credential to unlock keystore
+   server.tls.keystore_password_env=   # env var name holding keystore credential
+   server.tls.keystore_type=PKCS12     # BKS | JKS | KeychainStore | PKCS12
+   server.tls.protocols=               # comma seperated protocol versions to use
+   server.tls.truststore=              # path to truststore holding client CAs
+   server.tls.truststore_password=     # literal credential to unlock truststore
+   server.tls.truststore_password_env= # env var name holding truststore credential
+   server.tls.truststore_type=PKCS12   # BKS | JKS | KeychainStore | PKCS12
    ```
 
 A named lookup (`configName`) is resolved against `keeper.config.dir` first, then
@@ -258,50 +271,57 @@ the `file.transport` property or overridden per-request with `fileTransport`:
    java -jar target/credcat.jar "$UID_ONLY"
    ```
    ```json
-   INFO: {
-     "7bN_ceW-p3_alVUNmI09Tw" : {
-       "fields" : {
-         "password" : [ "bingbangboomdongle" ],
-         "login" : [ "ldaptest" ]
-       },
-       "files" : [ ],
-       "title" : "development ldap",
-       "type" : "login"
+   "7bN_ceW-p3_alVUNmI09Tw" : {
+     "fields" : {
+       "password" : [ "bingbangboomdongle" ],
+       "login" : [ "ldaptest" ]
      },
-     "chnmGhEC39YCHhNy1pA8vg" : {
-       "fields" : {
+     "files" : [ ],
+     "title" : "development ldap",
+     "type" : "login"
+   },
+   "chnmGhEC39YCHhNy1pA8vg" : {
+     "fields" : {
          "password" : [ "be0d988f-063c-d654-ad1b-a54337f87233" ],
          "login" : [ "integration.ucaas.call.metadata" ],
          "fileref" : [ "3HcX3vCCvHBTBcOqCgCnsQ", "cGBiPmG_9GlZszFbsQmJea" ]
-       },
-       "files" : [ {
-         "name" : "ascii-art.txt",
-         "path" : "/tmp/credcat_8f3a1c20-5e7b-4a9d-bd11-2c6f0e9a4477/ascii-art.txt",
-         "mimeType" : "text/plain",
-         "size" : 318
-       }, {
-         "name" : "integration.ucaas.call.metadata.PNG",
-         "path" : "/tmp/credcat_8f3a1c20-5e7b-4a9d-bd11-2c6f0e9a4477/integration.ucaas.call.metadata.PNG",
-         "mimeType" : "image/png",
-         "size" : 20480
-       } ],
-       "notes" : "VALUE = x-ClickToCall-APIKey:be0d988f-063c-d654-ad1b-a54337f87233",
-       "title" : "Production ClickToCall API Key",
-       "type" : "login"
-       }
-     }
+     },
+     "files" : [ {
+       "name" : "ascii-art.txt",
+       "path" : "/tmp/credcat_8f3a1c20-5e7b-4a9d-bd11-2c6f0e9a4477/ascii-art.txt",
+       "mimeType" : "text/plain",
+       "size" : 318
+     }, {
+       "name" : "integration.ucaas.call.metadata.PNG",
+       "path" : "/tmp/credcat_8f3a1c20-5e7b-4a9d-bd11-2c6f0e9a4477/integration.ucaas.call.metadata.PNG",
+       "mimeType" : "image/png",
+       "size" : 20480
+     } ],
+     "notes" : "VALUE = x-ClickToCall-APIKey:be0d988f-063c-d654-ad1b-a54337f87233",
+     "title" : "Production ClickToCall API Key",
+     "type" : "login"
    }
    ```
 
    The default `inline` transport trades a file `path` for base64 `content`, leaving
    nothing on the host:
    ```json
-   "files" : [ {
-     "content" : "ICAgIC9cX18vXAogICAoIC1fLSApCiAgIC8gPiA+IFwK",
-     "mimeType" : "text/plain",
-     "name" : "ascii-art.txt",
-     "size" : 318
-   } ]
+   "chnmGhEC39YCHhNy1pA8vg" : {
+     "fields" : {
+       "password" : [ "be0d988f-063c-d654-ad1b-a54337f87233" ],
+       "login" : [ "integration.ucaas.call.metadata" ],
+       "fileref" : [ "3HcX3vCCvHBTBcOqCgCnsQ" ]
+     },
+     "files" : [ {
+       "content" : "ICAgIC9cX18vXAogICAoIC1fLSApCiAgIC8gPiA+IFwK",
+       "mimeType" : "text/plain",
+       "name" : "ascii-art.txt",
+       "size" : 318
+     } ],
+     "notes" : "VALUE = x-ClickToCall-APIKey:be0d988f-063c-d654-ad1b-a54337f87233",
+     "title" : "Production ClickToCall API Key",
+     "type" : "login"
+   }
    ```
 
 3. Running in server mode accepts the same request payload, passed by the http client of your choice.

@@ -21,9 +21,9 @@ import java.util.stream.Stream;
  * or the service-wide default in that order.
  *
  * <ol>
- *   <li>An explicit literal in the request body ({@code config}) -- treated as
+ *   <li>An explicit literal in the request body ({@code config}), treated as
  *       either a filesystem path or raw base64/JSON content.</li>
- *   <li>A named config in the request body ({@code configName}) -- looked up
+ *   <li>A named config in the request body ({@code configName}), looked up
  *       against the configured directory and environment variable prefix
  *       (in that order).</li>
  *   <li>The service default ({@code keeper.config} from properties).</li>
@@ -123,7 +123,8 @@ public class KeeperConfig {
      *
      * @param raw The value to interpret.
      * @return The resolved config. Never {@code null}.
-     * @throws IllegalArgumentException if {@code raw} is none of the three.
+     * @throws IllegalArgumentException if {@code raw} is none of the three
+     *         or names an existing file that cannot be read.
      */
     public KSM interpret(String raw) {
         Objects.requireNonNull(raw, "raw");
@@ -145,6 +146,9 @@ public class KeeperConfig {
                         path.toString());
             } catch (IOException e) {
                 LOGGER.log(Level.SEVERE, "Failed to read Keeper config file.", e);
+                throw new IllegalArgumentException(
+                        "config points at " + path + " but reading it failed: "
+                        + e.getMessage(), e);
             }
         }
 

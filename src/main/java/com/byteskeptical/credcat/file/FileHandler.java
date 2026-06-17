@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -120,6 +121,11 @@ public interface FileHandler {
             Metadata m = metadataFor(file);
             Path target = downloadDir.resolve(sanitize(m.name));
 
+            if (Files.exists(target)) {
+                target = downloadDir.resolve(
+                        UUID.randomUUID() + "_" + target.getFileName());
+            }
+
             try (OutputStream os = new BufferedOutputStream(
                     Files.newOutputStream(target), BUFFER_SIZE)) {
                 os.write(bytes);
@@ -133,12 +139,20 @@ public interface FileHandler {
                     m.name, target.toString(), m.mime, (long) bytes.length);
         }
 
+        /**
+         * Keeps an attachment name inside the download directory: separators
+         * become underscores, and the bare dot names ({@code "."},
+         * {@code ".."}) that would resolve to the directory itself or its
+         * parent fall back to {@code "unnamed"}.
+         */
         private static String sanitize(String name) {
             if (Checks.isNullOrBlank(name)) {
                 return "unnamed";
             }
 
-            return name.replace('/', '_').replace('\\', '_');
+            String safe = name.replace('/', '_').replace('\\', '_');
+ 
+            return ".".equals(safe) || "..".equals(safe) ? "unnamed" : safe;
         }
     }
 

@@ -98,7 +98,7 @@ public class KeeperRequest {
     /**
      * Sets the save location for downloaded files.
      *
-     * @param saveLocation The location to save downloaded files too.
+     * @param saveLocation The location to save downloaded files to.
      */
     public void setSaveLocation(String saveLocation) {
         this.saveLocation = saveLocation;
@@ -107,14 +107,14 @@ public class KeeperRequest {
     /**
      * Gets the list of titles to search for.
      *
-     * @return The list of titles cooresponding to records for lookup.
+     * @return The list of titles corresponding to records for lookup.
      */
     public List<String> getTitles() {
         return titles;
     }
 
     /**
-     * Sets the list of titles to preform a record search on.
+     * Sets the list of titles to perform a record search on.
      *
      * @param titles A list with titles to search records for.
      */
@@ -125,14 +125,14 @@ public class KeeperRequest {
     /**
      * Gets the list of uid(s) to search for.
      *
-     * @return The list of uid(s) cooresponding to records for lookup.
+     * @return The list of uid(s) corresponding to records for lookup.
      */
     public List<String> getUids() {
         return uids;
     }
 
     /**
-     * Sets the list of uid(s) to preform a record search on.
+     * Sets the list of uid(s) to perform a record search on.
      *
      * @param uids A list with uid(s) to search records for.
      */

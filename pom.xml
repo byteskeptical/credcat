@@ -9,7 +9,7 @@
     <name>credcat</name>
     <packaging>jar</packaging>
     <url>https://${source.host}/${source.account}/${project.name}/</url>
-    <version>1.1.0</version>
+    <version>1.2.0</version>
 
     <build>
         <plugins>

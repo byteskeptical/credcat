@@ -9,14 +9,14 @@ import java.util.Collection;
  * Null-tolerant value checks and normalizations.
  *
  * <ul>
- *   <li>{@link #isBase64(String)} -- valid standard base64?</li>
- *   <li>{@link #isJson(String)} -- valid JSON?</li>
- *   <li>{@link #isNullOrBlank(String)} -- treats whitespace as missing. The
+ *   <li>{@link #isBase64(String)} valid standard base64?</li>
+ *   <li>{@link #isJson(String)} valid JSON?</li>
+ *   <li>{@link #isNullOrBlank(String)} treats whitespace as missing. The
  *       right default for config values, request fields, identifiers.</li>
- *   <li>{@link #isNullOrEmpty(Collection)} -- the parallel emptiness check
+ *   <li>{@link #isNullOrEmpty(Collection)} the parallel emptiness check
  *       for any {@link Collection}; collections have no {@code isBlank()}
  *       equivalent.</li>
- *   <li>{@link #trimToNull(String)} -- both checks and returns the cleaned
+ *   <li>{@link #trimToNull(String)} both checks and returns the cleaned
  *       value in one pass. The right tool for property reads from
  *       hand-edited files where trailing whitespace is a real risk.</li>
  * </ul>
