@@ -1,12 +1,14 @@
 package com.byteskeptical.credcat;
 
 import com.byteskeptical.credcat.config.KeeperConfig;
+import com.byteskeptical.credcat.config.TlsConfig;
 import com.byteskeptical.credcat.file.FileHandler;
 import com.byteskeptical.credcat.file.FileTransport;
 import com.byteskeptical.credcat.model.KeeperRequest;
 import com.byteskeptical.credcat.model.SecretResponse;
 import com.byteskeptical.credcat.util.Checks;
 import com.byteskeptical.credcat.util.JsonHandler;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.keepersecurity.secretsManager.core.AccountNumber;
 import com.keepersecurity.secretsManager.core.AddressRef;
 import com.keepersecurity.secretsManager.core.BankAccounts;
@@ -48,9 +50,11 @@ import com.keepersecurity.secretsManager.core.Url;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpsServer;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -117,18 +121,6 @@ public class SecretsService {
     }
 
     /**
-     * If you don't know, now you know.
-     *
-     * @return A string representing the service version.
-     */
-    public String getVersion() {
-        Package pkg = SecretsService.class.getPackage();
-        String version = pkg != null ? pkg.getImplementationVersion() : null;
-
-        return version != null ? version : VERSION;
-    }
-
-    /**
      * Load properties, provide sane defaults.
      */
     static class AppConfig {
@@ -142,6 +134,7 @@ public class SecretsService {
         final Path filesDir;
         final String clientKey;
         final String host;
+        final TlsConfig tls;
 
         /**
          * Properties from classpath or filesystem, prioritizing filesystem.
@@ -164,8 +157,13 @@ public class SecretsService {
             }
 
             // Load from Filesystem
-            File fsConfig = new File(CONFIG);
-            if (fsConfig.exists() && fsConfig.isFile()) {
+            String override = Checks.trimToNull(System.getProperty("credcat.config.file"));
+            if (override == null) {
+                override = Checks.trimToNull(System.getenv("CREDCAT_CONFIG_FILE"));
+            }
+ 
+            File fsConfig = new File(override != null ? override : CONFIG);
+            if (fsConfig.isFile()) {
                 try (FileInputStream fis = new FileInputStream(fsConfig)) {
                     props.load(fis);
                     LOGGER.log(Level.INFO,
@@ -174,11 +172,16 @@ public class SecretsService {
                     );
                 } catch (IOException e) {
                     LOGGER.log(Level.SEVERE,
-                            "Found the config " + CONFIG
+                            "Found the config " + fsConfig.getAbsolutePath()
                             + " but failed to read it. Check the permissions.", e
                     );
                     throw e;
                 }
+            } else if (override != null) {
+                throw new FileNotFoundException(
+                        "credcat.config.file points at " + fsConfig.getAbsolutePath()
+                        + " but no readable file was found there."
+                );
             }
 
             this.autoClean = Boolean.parseBoolean(
@@ -192,21 +195,19 @@ public class SecretsService {
             this.port = parseInt(props.getProperty("server.port"), 8888);
             this.threads = parseInt(
                     props.getProperty("server.threads"), THREADS);
+            this.tls = TlsConfig.fromProperties(props);
 
             String filesProp = Checks.trimToNull(props.getProperty("keeper.files"));
-            if (filesProp != null) {
-                this.filesDir = Path.of(filesProp);
-            } else {
-                String osTemp = System.getProperty("java.io.tmpdir");
-                this.filesDir = Path.of(osTemp, "credcat_" + UUID.randomUUID());
-            }
+            Path files = filesProp != null
+                    ? Path.of(filesProp)
+                    : Path.of(System.getProperty("java.io.tmpdir"),
+                            "credcat_" + UUID.randomUUID());
 
-            // Storage mode default is in-memory. LocalConfigStorage when
-            // token refresh persistence is desired on a writable filesystem.
+            this.filesDir = files.toAbsolutePath().normalize();
+
             this.persistentStorage = Boolean.parseBoolean(
                     props.getProperty("keeper.storage.persistent", "false"));
 
-            // Default keeper.config, can be a file path or literal content.
             String configProp = Checks.trimToNull(props.getProperty("keeper.config"));
             String keeperConfig = null;
 
@@ -218,7 +219,6 @@ public class SecretsService {
                 }
             }
 
-            // Named-config sources. Filesystem dir, env vars.
             String dirProp = Checks.trimToNull(props.getProperty("keeper.config.dir"));
             Path dirPath = dirProp != null ? Path.of(dirProp) : null;
 
@@ -249,8 +249,111 @@ public class SecretsService {
     }
 
     /**
+     * Picks the Keeper storage method. In-memory by default, file-backed when
+     * persistent storage is enabled and the config came from a writable file.
+     */
+    KeyValueStorage appStorage(KeeperConfig.KSM ksm) {
+        if (appConfig.persistentStorage && !Checks.isNullOrBlank(ksm.getOrigin())) {
+            Path path;
+            try {
+                path = Path.of(ksm.getOrigin());
+            } catch (InvalidPathException e) {
+                path = null;
+            }
+
+            if (path != null && Files.isRegularFile(path) && Files.isWritable(path)) {
+                LOGGER.log(Level.FINE, "Using LocalConfigStorage at {0}", path);
+                return new LocalConfigStorage(path.toString());
+            }
+        }
+
+        LOGGER.log(Level.FINE, "Using InMemoryStorage for Keeper config.");
+        return new InMemoryStorage(ksm.getContent());
+    }
+
+    /**
+     * Adds the BouncyCastle FIPS provider if it's on the classpath. Some
+     * platforms ship without it, in that case we fall back to the platform
+     * defaults and log a warning instead of dying.
+     */
+    private static void bouncyCastle() {
+        try {
+            Class<?> providerClass = Class.forName(
+                    "org.bouncycastle.jcajce.provider.BouncyCastleFipsProvider");
+            java.security.Provider provider =
+                    (java.security.Provider) providerClass
+                            .getDeclaredConstructor().newInstance();
+            Security.addProvider(provider);
+        } catch (ClassNotFoundException e) {
+            LOGGER.log(Level.WARNING,
+                    "BouncyCastle FIPS provider not on classpath; "
+                    + "using platform defaults.");
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING,
+                    "Failed to install BouncyCastle FIPS provider; "
+                    + "using platform defaults.", e);
+        }
+    }
+
+    /**
+     * Recursively wipes the files directory at shutdown so we don't litter
+     * the host with credcat_* dirs. Gated by {@code file.clean}.
+     */
+    private static void cleanFilesDir(Path dir) {
+        if (dir == null || !Files.exists(dir)) {
+            return;
+        }
+
+        try (Stream<Path> walk = Files.walk(dir)) {
+            walk.sorted(Comparator.reverseOrder())
+                    .forEach(p -> {
+                        try {
+                            Files.deleteIfExists(p);
+                        } catch (IOException e) {
+                            LOGGER.log(Level.FINE,
+                                    "Failed to delete temp entry " + p, e);
+                        }
+                    });
+        } catch (IOException e) {
+            LOGGER.log(Level.FINE,
+                    "Failed to walk temp directory " + dir, e);
+        }
+    }
+
+    /**
+     * Resolves the directory DISK transport writes into. Request supplied
+     * locations are taken relative to {@code keeper.files} and may not
+     * escape it. Absent a request value, {@code keeper.files} itself is used.
+     *
+     * @param requested The request supplied saveLocation; may be {@code null}.
+     * @return The directory to hand to the file handler.
+     * @throws IllegalArgumentException if {@code requested} is not a valid
+     *         path or escapes {@code keeper.files}.
+     */
+    String filesLocation(String requested) {
+        String trimmed = Checks.trimToNull(requested);
+
+        if (trimmed == null) {
+            return appConfig.filesDir.toString();
+        }
+
+        try {
+            Path resolved = appConfig.filesDir.resolve(trimmed).normalize();
+
+            if (resolved.startsWith(appConfig.filesDir)) {
+                return resolved.toString();
+            }
+        } catch (InvalidPathException ignored) {
+            // rejected below
+        }
+
+        throw new IllegalArgumentException(
+                "saveLocation must resolve inside the keeper.files directory.");
+    }
+
+    /**
      * Find KeeperRecords by UIDs and/or titles.
-     * Uses the SDK's UID filter when only UIDs are supplied; otherwise fetches
+     * Uses the SDK's UID filter when only UIDs are supplied. Otherwise fetches
      * once and filters in-process. Records are deduplicated by UID to handle
      * overlap between the two lookups.
      *
@@ -316,6 +419,17 @@ public class SecretsService {
     }
 
     /**
+     * Formats epoch-millisecond timestamps as ISO-8601 UTC. Used identically
+     * by {@code BirthDate}, {@code Date} and {@code ExpirationDate}
+     *
+     * @param timestamps A list of epoch-millisecond values. Can be {@code null}.
+     * @return ISO-8601 string forms.
+     */
+    private static List<String> formatTimestamp(List<Long> timestamps) {
+        return mapValues(timestamps, ts -> Instant.ofEpochMilli(ts).toString());
+    }
+
+    /**
      * Initialize secure storage then retrieve secrets.
      *
      * @param jsonRequest A JSON string representing the KeeperRequest.
@@ -346,14 +460,11 @@ public class SecretsService {
 
         FileTransport transport = FileTransport.parse(
                 request.getFileTransport(), appConfig.fileTransport);
-        String requestLocation = request.getSaveLocation();
-        String saveLocation = !Checks.isNullOrBlank(requestLocation)
-                ? requestLocation
-                : appConfig.filesDir.toString();
+        String saveLocation = filesLocation(request.getSaveLocation());
 
         KeyValueStorage storage;
         try {
-            storage = buildStorage(ksm);
+            storage = appStorage(ksm);
         } catch (Exception e) {
             String errorMessage = "Loading of KSM vault config failed. "
                     + "Ensure the config is valid base64-encoded or JSON.";
@@ -383,32 +494,92 @@ public class SecretsService {
     }
 
     /**
-     * Picks the Keeper storage impl. In-memory by default; file-backed when
-     * persistent storage is enabled and the config came from a writable file.
+     * If you don't know, now you know.
+     *
+     * @return A string representing the service version.
      */
-    KeyValueStorage buildStorage(KeeperConfig.KSM ksm) {
-        if (appConfig.persistentStorage && !Checks.isNullOrBlank(ksm.getOrigin())) {
-            Path path;
-            try {
-                path = Path.of(ksm.getOrigin());
-            } catch (InvalidPathException e) {
-                path = null;
-            }
+    public String getVersion() {
+        Package pkg = SecretsService.class.getPackage();
+        String version = pkg != null ? pkg.getImplementationVersion() : null;
 
-            if (path != null && Files.isRegularFile(path) && Files.isWritable(path)) {
-                LOGGER.log(Level.FINE, "Using LocalConfigStorage at {0}", path);
-                return new LocalConfigStorage(path.toString());
+        return version != null ? version : VERSION;
+    }
+
+    /**
+     * Returns true if at least one value in the list is non-empty.
+     */
+    private static boolean hasValue(List<String> values) {
+        if (Checks.isNullOrEmpty(values)) {
+            return false;
+        }
+
+        for (String v : values) {
+            if (!Checks.isNullOrBlank(v)) {
+                return true;
             }
         }
 
-        LOGGER.log(Level.FINE, "Using InMemoryStorage for Keeper config.");
-        return new InMemoryStorage(ksm.getContent());
+        return false;
+    }
+
+    /**
+     * Logging bootstrap. JUL only auto-loads from a system property;
+     * we can't always set one, so we look in the classpath and then
+     * alongside the JAR. Honors the user's
+     * {@code -Djava.util.logging.config.file} when set.
+     */
+    private static void initLogging() {
+        if (System.getProperty("java.util.logging.config.file") != null) {
+            return;
+        }
+
+        // Filesystem first.
+        File fs = new File(LOGGING);
+        if (fs.isFile()) {
+            try (FileInputStream fis = new FileInputStream(fs)) {
+                LogManager.getLogManager().readConfiguration(fis);
+                return;
+            } catch (IOException e) {
+                // fall through to classpath
+            }
+        }
+
+        // Classpath fallback.
+        try (InputStream is = SecretsService.class.getClassLoader()
+                .getResourceAsStream(LOGGING)) {
+            if (is != null) {
+                LogManager.getLogManager().readConfiguration(is);
+            }
+        } catch (IOException ignored) {
+            // Stick with JVM defaults.
+        }
+    }
+
+    /**
+     * Maps a list of structured values to their string form, tolerating a null
+     * input list and skipping null entries.
+     *
+     * @param values The source list (may be {@code null}).
+     * @param fn     Converter from a non-null value to its string form.
+     * @return A list of string forms, possibly empty, never {@code null}.
+     */
+    private static <T> List<String> mapValues(
+            List<T> values, Function<T, String> fn
+    ) {
+        if (Checks.isNullOrEmpty(values)) {
+            return Collections.emptyList();
+        }
+
+        return values.stream()
+                .filter(Objects::nonNull)
+                .map(fn)
+                .collect(Collectors.toList());
     }
 
     /**
      * Downloads files attached to a KeeperRecord, provides its metadata.
      *
-     * @param files A list of KeeperFile entries usually from a KeeperRecord.
+     * @param files   A list of KeeperFile entries usually from a KeeperRecord.
      * @param handler The strategy to use for materializing each file.
      * @return A list of name, path file object details for downloaded files.
      */
@@ -443,7 +614,7 @@ public class SecretsService {
     /**
      * Process record(s) field(s) values, organize in a structured format.
      *
-     * @param records A list of KeeperRecord entries.
+     * @param records     A list of KeeperRecord entries.
      * @param fileHandler The file handler chosen for this request.
      * @return A hashmap of credential fields and their values.
      */
@@ -501,50 +672,47 @@ public class SecretsService {
     }
 
     /**
-     * Returns true if at least one value in the list is non-empty.
+     * Reads a bounded amount of bytes from the request body. Returns
+     * {@code null} when the body exceeds the configured maximum, in which
+     * case the handler should reply 413.
      */
-    private static boolean hasValue(List<String> values) {
-        if (Checks.isNullOrEmpty(values)) {
-            return false;
-        }
+    private static byte[] readRequest(InputStream in, int maxBytes) throws IOException {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream(
+                Math.min(maxBytes, 8192));
+        byte[] chunk = new byte[8192];
+        int read;
+        int total = 0;
 
-        for (String v : values) {
-            if (!Checks.isNullOrBlank(v)) {
-                return true;
+        while ((read = in.read(chunk)) != -1) {
+            total += read;
+
+            if (total > maxBytes) {
+                return null;
             }
+
+            buf.write(chunk, 0, read);
         }
 
-        return false;
+        return buf.toByteArray();
     }
 
     /**
-     * Maps a list of structured values to their string form, tolerating a null
-     * input list and skipping null entries.
+     * Don't shoot the messenger.
      *
-     * @param values The source list (may be {@code null}).
-     * @param fn     Converter from a non-null value to its string form.
-     * @return A list of string forms, possibly empty, never {@code null}.
+     * @param exchange Encapsulation of methods for request received and response.
+     * @param statusCode HTTP status of choice sent as response.
+     * @param response What say you back?
      */
-    private static <T> List<String> mapValues(List<T> values, Function<T, String> fn) {
-        if (Checks.isNullOrEmpty(values)) {
-            return Collections.emptyList();
+    private static void sendResponse(
+            HttpExchange exchange, int statusCode, String response
+    ) throws IOException {
+        byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(statusCode, bytes.length);
+
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(bytes);
         }
-
-        return values.stream()
-                .filter(Objects::nonNull)
-                .map(fn)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Formats epoch-millis timestamps as ISO-8601 UTC. Used identically by
-     * {@code BirthDate}, {@code Date}, and {@code ExpirationDate}
-     *
-     * @param timestamps A list of epoch-millisecond values; may be {@code null}.
-     * @return ISO-8601 string forms.
-     */
-    private static List<String> formatTimestamps(List<Long> timestamps) {
-        return mapValues(timestamps, ts -> Instant.ofEpochMilli(ts).toString());
     }
 
     /**
@@ -566,15 +734,15 @@ public class SecretsService {
                     ba.getAccountType(), ba.getRoutingNumber(),
                     ba.getAccountNumber(), ba.getOtherType()));
         } else if (field instanceof BirthDate) {
-            return formatTimestamps(((BirthDate) field).getValue());
+            return formatTimestamp(((BirthDate) field).getValue());
         } else if (field instanceof CardRef) {
             return ((CardRef) field).getValue();
         } else if (field instanceof Date) {
-            return formatTimestamps(((Date) field).getValue());
+            return formatTimestamp(((Date) field).getValue());
         } else if (field instanceof Email) {
             return ((Email) field).getValue();
         } else if (field instanceof ExpirationDate) {
-            return formatTimestamps(((ExpirationDate) field).getValue());
+            return formatTimestamp(((ExpirationDate) field).getValue());
         } else if (field instanceof FileRef) {
             return ((FileRef) field).getValue();
         } else if (field instanceof HiddenField) {
@@ -659,50 +827,6 @@ public class SecretsService {
     }
 
     /**
-     * Don't shoot the messenger.
-     *
-     * @param exchange Encapsulation of methods for request received and response.
-     * @param statusCode HTTP status of choice sent as response.
-     * @param response What say you back?
-     */
-    private static void sendResponse(
-            HttpExchange exchange, int statusCode, String response
-    ) throws IOException {
-        byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
-        exchange.sendResponseHeaders(statusCode, bytes.length);
-
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(bytes);
-        }
-    }
-
-    /**
-     * Reads a bounded amount of bytes from the request body. Returns
-     * {@code null} when the body exceeds the configured maximum, in which
-     * case the handler should reply 413.
-     */
-    private static byte[] readRequest(InputStream in, int maxBytes) throws IOException {
-        ByteArrayOutputStream buf = new ByteArrayOutputStream(
-                Math.min(maxBytes, 8192));
-        byte[] chunk = new byte[8192];
-        int read;
-        int total = 0;
-
-        while ((read = in.read(chunk)) != -1) {
-            total += read;
-
-            if (total > maxBytes) {
-                return null;
-            }
-
-            buf.write(chunk, 0, read);
-        }
-
-        return buf.toByteArray();
-    }
-
-    /**
      * Handles POST requests for secrets.
      */
     static class SecretsHandler implements HttpHandler {
@@ -739,6 +863,10 @@ public class SecretsService {
                 LOGGER.warning("Bad Request: " + e.getMessage());
                 sendResponse(exchange, 400,
                         JsonHandler.envelope("error", e.getMessage()));
+            } catch (JsonProcessingException e) {
+                LOGGER.warning("Malformed JSON: " + e.getOriginalMessage());
+                sendResponse(exchange, 400, JsonHandler.envelope("error",
+                        "Request body is not valid JSON."));
             } catch (Exception e) {
                 LOGGER.log(Level.SEVERE, "Internal Error", e);
                 String detail = e.getMessage() != null
@@ -774,88 +902,6 @@ public class SecretsService {
     }
 
     /**
-     * Recursively wipes the files directory at shutdown so we don't litter
-     * the host with credcat_* dirs. Gated solely by {@code file.clean}.
-     */
-    private static void cleanFilesDir(Path dir) {
-        if (dir == null || !Files.exists(dir)) {
-            return;
-        }
-
-        try (Stream<Path> walk = Files.walk(dir)) {
-            walk.sorted(Comparator.reverseOrder())
-                    .forEach(p -> {
-                        try {
-                            Files.deleteIfExists(p);
-                        } catch (IOException e) {
-                            LOGGER.log(Level.FINE,
-                                    "Failed to delete temp entry " + p, e);
-                        }
-                    });
-        } catch (IOException e) {
-            LOGGER.log(Level.FINE,
-                    "Failed to walk temp directory " + dir, e);
-        }
-    }
-
-    /**
-     * Logging bootstrap. JUL only auto-loads from a system property;
-     * we can't always set one, so we look in the classpath and then
-     * alongside the JAR. Honors the user's
-     * {@code -Djava.util.logging.config.file} when set.
-     */
-    private static void initLogging() {
-        if (System.getProperty("java.util.logging.config.file") != null) {
-            return;
-        }
-
-        // Filesystem first.
-        File fs = new File(LOGGING);
-        if (fs.isFile()) {
-            try (FileInputStream fis = new FileInputStream(fs)) {
-                LogManager.getLogManager().readConfiguration(fis);
-                return;
-            } catch (IOException e) {
-                // fall through to classpath
-            }
-        }
-
-        // Classpath fallback.
-        try (InputStream is = SecretsService.class.getClassLoader()
-                .getResourceAsStream(LOGGING)) {
-            if (is != null) {
-                LogManager.getLogManager().readConfiguration(is);
-            }
-        } catch (IOException ignored) {
-            // Stick with JVM defaults.
-        }
-    }
-
-    /**
-     * Adds the BouncyCastle FIPS provider if it's on the classpath. Some
-     * platforms ship without it; in that case we fall back to the platform
-     * defaults and log a warning instead of dying.
-     */
-    private static void bouncyCastle() {
-        try {
-            Class<?> providerClass = Class.forName(
-                    "org.bouncycastle.jcajce.provider.BouncyCastleFipsProvider");
-            java.security.Provider provider =
-                    (java.security.Provider) providerClass
-                            .getDeclaredConstructor().newInstance();
-            Security.addProvider(provider);
-        } catch (ClassNotFoundException e) {
-            LOGGER.log(Level.WARNING,
-                    "BouncyCastle FIPS provider not on classpath; "
-                    + "using platform defaults.");
-        } catch (Exception e) {
-            LOGGER.log(Level.WARNING,
-                    "Failed to install BouncyCastle FIPS provider; "
-                    + "using platform defaults.", e);
-        }
-    }
-
-    /**
      * Main method. Mode based on arguments.
      *
      * @param args payload based on KeeperRequests or "-server".
@@ -885,9 +931,17 @@ public class SecretsService {
             SecretsService service = new SecretsService(config);
 
             if (args[0].equals("-server")) {
-                HttpServer server = HttpServer.create(
-                        new InetSocketAddress(config.host, config.port), 0
-                );
+                InetSocketAddress address =
+                        new InetSocketAddress(config.host, config.port);
+                final HttpServer server;
+ 
+                if (config.tls.isEnabled()) {
+                    HttpsServer https = HttpsServer.create(address, 0);
+                    https.setHttpsConfigurator(config.tls.createConfigurator());
+                    server = https;
+                } else {
+                    server = HttpServer.create(address, 0);
+                }
 
                 server.createContext(
                         "/api/getSecrets",
@@ -930,8 +984,11 @@ public class SecretsService {
 
                 long elapsed = System.currentTimeMillis() - startTime;
                 LOGGER.log(Level.INFO,
-                        "Credcat started meowing in {0}ms on {1}:{2,number,#}",
-                        new Object[] { elapsed, config.host, config.port });
+                        "Credcat started meowing in {0}ms on {1}://{2}:{3,number,#}",
+                        new Object[] {
+                                elapsed,
+                                config.tls.isEnabled() ? "https" : "http",
+                                config.host, config.port });
             } else {
                 try {
                     String response = service.getSecrets(args[0]);

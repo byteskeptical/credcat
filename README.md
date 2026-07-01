@@ -77,10 +77,9 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-Extending access to Keeper secrets manager for api retrival in
-distributed or disconnected processes. Serves as a quality of life
-abstraction to diminish the scourge of hard-coded, insecurely
-handled credentials in our code bases.
+Extending access to Keeper secrets manager for api retrival in distributed or
+disconnected processes. Serves as a quality of life abstraction to diminish the
+scourge of hard-coded, insecurely handled credentials in our code bases.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -99,14 +98,14 @@ _Java is like a bad relationship. It's too object-oriented_
 <!-- GETTING STARTED -->
 ## Getting Started
 
-Compiling is not necessary as release binaries are available. If
-you're so inclined the sections below are for you.
+Compiling is not necessary as release binaries are available. If you're so
+inclined the sections below are for you.
 
 ### Prerequisites
 
-Your going to need a compiler, I recommend anything not Oracle java.
-Depending on your os, the installation process will vary. Additional
-packages like maven will be needed to utilize the provided pom file.
+Your going to need a compiler, I recommend anything not Oracle java. Depending
+on your os, the installation process will vary. Additional packages like maven
+will be needed to utilize the provided pom file.
 
 #### CentOS
 * bash
@@ -188,8 +187,11 @@ packages like maven will be needed to utilize the provided pom file.
 ### Configuration
 
 Every knob lives in `credcat.properties`. All are optional and fall back to sane
-defaults, so an empty file is a working file. The `server.*` settings are ignored
-in stand-alone mode.
+defaults, so an empty file is a working file. The `server.*` settings are
+ignored in stand-alone mode. This file can be placed in the current working
+directory of the jar file to avoid needing to recompile on change. That location
+can be overriden by setting the `CREDCAT_CONFIG_FILE` environment variable or
+the `-Dcredcat.config.file` flag on init.
 
    ```properties
    # Keeper
@@ -202,18 +204,31 @@ in stand-alone mode.
 
    # Files
    file.clean=true                     # wipe the files directory recursively on shutdown
-   file.transport=inline               # disk | inline | none
+   file.transport=inline               # record attachments: disk | inline | none
 
    # Server
-   server.host=127.0.0.1
-   server.port=8888
+   server.host=127.0.0.1               # hostname or IP for server service to run on 
+   server.port=8888                    # port to bind service on. Prefer >= 1024
    server.max_request_bytes=1048576    # larger request bodies are rejected with a 413
    server.threads=                     # worker pool size (defaults to max(8, 2x cpu cores))
+
+   # TLS
+   server.tls.client_auth=NONE         # mutual tls: need | none | want
+   server.tls.enabled=false            # serve https instead of http
+   server.tls.keystore=                # path to keystore holding server certificate
+   server.tls.keystore_password=       # literal credential to unlock keystore
+   server.tls.keystore_password_env=   # env var name holding keystore credential
+   server.tls.keystore_type=PKCS12     # BKS | JKS | KeychainStore | PKCS12
+   server.tls.protocols=               # comma seperated protocol versions to use
+   server.tls.truststore=              # path to truststore holding client CAs
+   server.tls.truststore_password=     # literal credential to unlock truststore
+   server.tls.truststore_password_env= # env var name holding truststore credential
+   server.tls.truststore_type=PKCS12   # BKS | JKS | KeychainStore | PKCS12
    ```
 
-A named lookup (`configName`) is resolved against `keeper.config.dir` first, then
-the `keeper.config.env` prefix; the literal `config` parameter always wins when both
-are present, and the `keeper.config` default backs them all.
+A named lookup `configName` is resolved against `keeper.config.dir` first, then
+the `keeper.config.env` prefix. The literal `config` parameter always wins when both
+are present and the `keeper.config` default backs them all.
 
 
 
@@ -229,15 +244,16 @@ parameter to switch between pre-defined choices stashed in either a directory or
 through environment variables. The `config`, `configName` and `clientKey`
 parameters are your means to alternate between application vaults.
 
-Pass one or more of either titles and/or record uid's to retrieve multiple records
-at once. Exact matches only.
+Pass one or more of either titles and/or record uid's to retrieve multiple
+records at once. Exact matches only.
 
-Attached files are handed back however your deployment prefers, set globally with
-the `file.transport` property or overridden per-request with `fileTransport`:
+Attached files are handed back however your deployment prefers, set globally
+with the `file.transport` property or overridden per-request with
+`fileTransport`:
 
 * `disk`   written to the save location, whose path is returned in the response.
-* `inline` base64 encoded straight into the response; nothing touches the disk.
-* `none`   skipped entirely; only the file's metadata comes back.
+* `inline` base64 encoded straight into the response, nothing touches the disk.
+* `none`   skipped entirely, only the file's metadata comes back.
 
    ```sh
    Usage: java -jar credcat.jar [ -server | '{ "config": ".keeper/config.base64", "titles": ["RECORD_TITLE"], "uids": ["RECORD_UID"] }' ]
@@ -254,60 +270,67 @@ the `file.transport` property or overridden per-request with `fileTransport`:
 2. Whether passing title or uid, records are returned nested under its respective uid.
    Using the `disk` transport:
    ```sh
-   java -cp "target/classes:target/dependency/*" com.byteskeptical.credcat.SecretsService "$ADVANCED"
+   java -cp "target/classes:target/lib/*" com.byteskeptical.credcat.SecretsService "$ADVANCED"
    java -jar target/credcat.jar "$UID_ONLY"
    ```
    ```json
-   INFO: {
-     "7bN_ceW-p3_alVUNmI09Tw" : {
-       "fields" : {
-         "password" : [ "bingbangboomdongle" ],
-         "login" : [ "ldaptest" ]
-       },
-       "files" : [ ],
-       "title" : "development ldap",
-       "type" : "login"
+   "7bN_ceW-p3_alVUNmI09Tw" : {
+     "fields" : {
+       "password" : [ "bingbangboomdongle" ],
+       "login" : [ "ldaptest" ]
      },
-     "chnmGhEC39YCHhNy1pA8vg" : {
-       "fields" : {
-         "password" : [ "be0d988f-063c-d654-ad1b-a54337f87233" ],
-         "login" : [ "integration.ucaas.call.metadata" ],
-         "fileref" : [ "3HcX3vCCvHBTBcOqCgCnsQ", "cGBiPmG_9GlZszFbsQmJea" ]
-       },
-       "files" : [ {
-         "name" : "ascii-art.txt",
-         "path" : "/tmp/credcat_8f3a1c20-5e7b-4a9d-bd11-2c6f0e9a4477/ascii-art.txt",
-         "mimeType" : "text/plain",
-         "size" : 318
-       }, {
-         "name" : "integration.ucaas.call.metadata.PNG",
-         "path" : "/tmp/credcat_8f3a1c20-5e7b-4a9d-bd11-2c6f0e9a4477/integration.ucaas.call.metadata.PNG",
-         "mimeType" : "image/png",
-         "size" : 20480
-       } ],
-       "notes" : "VALUE = x-ClickToCall-APIKey:be0d988f-063c-d654-ad1b-a54337f87233",
-       "title" : "Production ClickToCall API Key",
-       "type" : "login"
-       }
-     }
+     "files" : [ ],
+     "title" : "development ldap",
+     "type" : "login"
+   },
+   "chnmGhEC39YCHhNy1pA8vg" : {
+     "fields" : {
+       "password" : [ "be0d988f-063c-d654-ad1b-a54337f87233" ],
+       "login" : [ "integration.ucaas.call.metadata" ],
+       "fileref" : [ "3HcX3vCCvHBTBcOqCgCnsQ", "cGBiPmG_9GlZszFbsQmJea" ]
+     },
+     "files" : [ {
+       "name" : "ascii-art.txt",
+       "path" : "/tmp/credcat_8f3a1c20-5e7b-4a9d-bd11-2c6f0e9a4477/ascii-art.txt",
+       "mimeType" : "text/plain",
+       "size" : 318
+     }, {
+       "name" : "integration.ucaas.call.metadata.PNG",
+       "path" : "/tmp/credcat_8f3a1c20-5e7b-4a9d-bd11-2c6f0e9a4477/integration.ucaas.call.metadata.PNG",
+       "mimeType" : "image/png",
+       "size" : 20480
+     } ],
+     "notes" : "VALUE = x-ClickToCall-APIKey:be0d988f-063c-d654-ad1b-a54337f87233",
+     "title" : "Production ClickToCall API Key",
+     "type" : "login"
    }
    ```
 
    The default `inline` transport trades a file `path` for base64 `content`, leaving
    nothing on the host:
    ```json
-   "files" : [ {
-     "content" : "ICAgIC9cX18vXAogICAoIC1fLSApCiAgIC8gPiA+IFwK",
-     "mimeType" : "text/plain",
-     "name" : "ascii-art.txt",
-     "size" : 318
-   } ]
+   "chnmGhEC39YCHhNy1pA8vg" : {
+     "fields" : {
+       "password" : [ "be0d988f-063c-d654-ad1b-a54337f87233" ],
+       "login" : [ "integration.ucaas.call.metadata" ],
+       "fileref" : [ "3HcX3vCCvHBTBcOqCgCnsQ" ]
+     },
+     "files" : [ {
+       "content" : "ICAgIC9cX18vXAogICAoIC1fLSApCiAgIC8gPiA+IFwK",
+       "mimeType" : "text/plain",
+       "name" : "ascii-art.txt",
+       "size" : 318
+     } ],
+     "notes" : "VALUE = x-ClickToCall-APIKey:be0d988f-063c-d654-ad1b-a54337f87233",
+     "title" : "Production ClickToCall API Key",
+     "type" : "login"
+   }
    ```
 
 3. Running in server mode accepts the same request payload, passed by the http client of your choice.
    You can set your preferred host and port in the credcat properties file.
    ```sh
-   java -cp "target/classes:target/dependency/*" -server
+   java -cp "target/classes:target/lib/*" -server
    java -jar target/credcat.jar -server
    ```
    ```sh
