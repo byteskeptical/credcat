@@ -9,7 +9,7 @@
     <name>credcat</name>
     <packaging>jar</packaging>
     <url>https://${source.host}/${source.account}/${project.name}/</url>
-    <version>1.2.0</version>
+    <version>1.1.0</version>
 
     <build>
         <plugins>
@@ -65,7 +65,7 @@
                         </goals>
                         <configuration>
                             <excludeTransitive>false</excludeTransitive>
-                            <outputDirectory>${project.build.directory}/dependency</outputDirectory>
+                            <outputDirectory>${project.build.directory}/lib</outputDirectory>
                             <stripVersion>false</stripVersion>
                         </configuration>
                     </execution>
@@ -103,7 +103,7 @@
                     <archive>
                         <manifest>
                             <addClasspath>true</addClasspath>
-                            <classpathPrefix>dependency/</classpathPrefix>
+                            <classpathPrefix>lib/</classpathPrefix>
                             <mainClass>${project.groupId}.credcat.SecretsService</mainClass>
                         </manifest>
                     </archive>

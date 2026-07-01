@@ -54,6 +54,7 @@ import com.sun.net.httpserver.HttpsServer;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -101,7 +102,7 @@ public class SecretsService {
     private static final String CONFIG = "credcat.properties";
     private static final String DOMAIN = "keepersecurity.com";
     private static final String LOGGING = "logging.properties";
-    private static final String VERSION = "1.2.0";
+    private static final String VERSION = "1.1.0";
 
     static {
         initLogging();
@@ -156,8 +157,13 @@ public class SecretsService {
             }
 
             // Load from Filesystem
-            File fsConfig = new File(CONFIG);
-            if (fsConfig.exists() && fsConfig.isFile()) {
+            String override = Checks.trimToNull(System.getProperty("credcat.config.file"));
+            if (override == null) {
+                override = Checks.trimToNull(System.getenv("CREDCAT_CONFIG_FILE"));
+            }
+ 
+            File fsConfig = new File(override != null ? override : CONFIG);
+            if (fsConfig.isFile()) {
                 try (FileInputStream fis = new FileInputStream(fsConfig)) {
                     props.load(fis);
                     LOGGER.log(Level.INFO,
@@ -166,11 +172,16 @@ public class SecretsService {
                     );
                 } catch (IOException e) {
                     LOGGER.log(Level.SEVERE,
-                            "Found the config " + CONFIG
+                            "Found the config " + fsConfig.getAbsolutePath()
                             + " but failed to read it. Check the permissions.", e
                     );
                     throw e;
                 }
+            } else if (override != null) {
+                throw new FileNotFoundException(
+                        "credcat.config.file points at " + fsConfig.getAbsolutePath()
+                        + " but no readable file was found there."
+                );
             }
 
             this.autoClean = Boolean.parseBoolean(

@@ -36,7 +36,9 @@ public class KeeperConfig {
     private static final Logger LOGGER = Logger.getLogger(KeeperConfig.class.getName());
 
     /** Filename extensions tried during named lookup. */
-    private static final List<String> EXTENSIONS = List.of(".json", ".b64", "");
+    private static final List<String> EXTENSIONS = List.of(
+            ".json", ".b64", "base64", ""
+    );
 
     private final String configContent;
     private final Path configDir;
